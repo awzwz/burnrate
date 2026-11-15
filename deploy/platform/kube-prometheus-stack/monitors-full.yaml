@@ -1,0 +1,15 @@
+# Profile "full" only (namespace cert-manager does not exist in "small"). Applied by bootstrap.sh, step observability.
+# cert-manager: certmanager_certificate_expiration_timestamp_seconds for the expiry alert
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cert-manager
+      app.kubernetes.io/component: controller
+  podMetricsEndpoints:
+    - port: http-metrics
+      interval: 60s

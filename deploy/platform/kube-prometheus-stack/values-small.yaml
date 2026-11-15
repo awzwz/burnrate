@@ -5,8 +5,8 @@ prometheus:
     retention: 1d
     retentionSize: 4GB
     resources:
-      requests: {cpu: 100m, memory: 768Mi}
-      limits: {memory: 1536Mi}
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {memory: 1280Mi}
     storageSpec:
       volumeClaimTemplate:
         spec:

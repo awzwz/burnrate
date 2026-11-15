@@ -1,12 +1,13 @@
-# The public entry of the cluster (Gateway API, implemented by Envoy Gateway).
+# The public entry of the cluster, profile "full" (Gateway API, implemented by Envoy Gateway): TLS at the gateway.
 #
 #   Internet -> DigitalOcean Load Balancer "burnrate-lb" (L4) -> Envoy proxies -> HTTPRoutes
 #
 #   GatewayClass "envoy"      which controller, and with which proxy settings (EnvoyProxy "burnrate")
 #   Gateway "burnrate"        listeners :80 (redirect + ACME HTTP-01) and :443 (TLS, certificate burnrate-tls)
 #   HTTPRoute http-to-https   everything on :80 -> 301 https
-# The application's own HTTPRoute lives with the application: deploy/apps/common/routes.yaml.
-# The EnvoyProxy object (replicas, resources, load balancer) is per profile: proxy-small.yaml / proxy-full.yaml.
+# The application's own HTTPRoute lives with the application: deploy/apps/common/routes.yaml (the full profile
+# attaches it to the listener "https"). The EnvoyProxy object: proxy-full.yaml.
+# (Profile "small" is different: TLS ends at a Caddy server outside the cluster, see gateway-small.yaml.)
 #
 # If DOKS runs Cilium's own Gateway controller there is a second GatewayClass named "cilium". The two do not
 # collide: each controller only touches Gateways of its own class.

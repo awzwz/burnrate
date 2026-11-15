@@ -24,15 +24,17 @@ spec:
         class: do-block-storage
         deleteClaim: false
         kraftMetadata: shared
+  # Sized for two 8 GB nodes: 512 MB of heap, the rest of the request is page cache and JVM overhead.
+  # (The previous cluster ran 768 MB of heap in 1536 Mi; this smaller setting has not run on a cluster yet.)
   jvmOptions:
-    "-Xms": 768m
-    "-Xmx": 768m
+    "-Xms": 512m
+    "-Xmx": 512m
   resources:
     requests:
       cpu: 250m
-      memory: 1536Mi
+      memory: 1024Mi
     limits:
-      memory: 1536Mi
+      memory: 1280Mi
 ---
 apiVersion: kafka.strimzi.io/v1
 kind: Kafka

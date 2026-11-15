@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rolls the application out: hostnames from the load balancer IP, schema job, apply, wait, print the URL.
+# Rolls the application out: public hostname, schema job, apply, wait, print the URL.
 #
 #   deploy/scripts/deploy.sh                       # the tag build.sh pushed last (deploy/.state/image-tag)
 #   deploy/scripts/deploy.sh --tag 3f2a9c1         # a specific image tag; this is also how to roll BACK
@@ -10,17 +10,19 @@
 #
 # Steps
 #   1. regenerate the per-service manifests from the code (gen-apps.sh)
-#   2. write deploy/apps/env/kustomization.yaml: hostname burnrate.<LB-IP-with-dashes>.sslip.io, image tags,
-#      a hash of the configuration (a changed ConfigMap or Secret then rolls every Deployment)
+#   2. write deploy/apps/env/kustomization.yaml: the public hostname, image tags, a hash of the configuration
+#      (a changed ConfigMap or Secret then rolls every Deployment). Hostname: profile small =
+#      burnrate.67.207.94.96.sslip.io, the name served by the Caddy edge server; profile full =
+#      burnrate.<load-balancer-IP-with-dashes>.sslip.io
 #   3. render deploy/apps/$PROFILE with kustomize
 #   4. apply the ConfigMap and the NetworkPolicies, then run the schema Job with the NEW image and wait for it;
 #      a failed Job stops the release here, with the old pods still serving
 #   5. apply everything else and wait for every Deployment to finish rolling
 #   6. print the URL
 #
-# Options: --host NAME (instead of the name derived from the load balancer), --skip-schema, --timeout SECONDS
+# Options: --host NAME (instead of the profile's default name), --skip-schema, --timeout SECONDS
 # (for all rollouts together, default 900), --no-gen (do not regenerate manifests).
-# Environment: PROFILE, REGISTRY / REGISTRY_NAME, TAG, HOST, LB_IP.
+# Environment: PROFILE, REGISTRY / REGISTRY_NAME, TAG, HOST, EDGE_HOST, LB_IP.
 # A Deployment whose service was removed from the code is not deleted: kubectl -n burnrate delete deploy,svc <name>.
 set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
@@ -89,6 +91,16 @@ if dry; then
   ENV_FILE_OUT=$WORK/apps/env/kustomization.yaml
   OVERLAY=$WORK/apps/$PROFILE
 fi
+# The generated manifests name the images $REGISTRY/api and $REGISTRY/web (registry.digitalocean.com/burnrate
+# unless REGISTRY_NAME says otherwise). Both spellings are listed so the tag is always set.
+extra_images=""
+if [[ "$REGISTRY" != "registry.digitalocean.com/burnrate" ]]; then
+  extra_images="  - name: $API_IMAGE
+    newTag: \"$TAG\"
+  - name: $WEB_IMAGE
+    newTag: \"$TAG\"
+"
+fi
 cat > "$ENV_FILE_OUT" <<EOF
 # What belongs to ONE deployment of the application: public hostname, image tags, configuration hash.
 # REWRITTEN by deploy/scripts/deploy.sh on every run (this version: $(date -u +%Y-%m-%dT%H:%M:%SZ), profile $PROFILE).
@@ -102,7 +114,7 @@ images:
   - name: registry.digitalocean.com/burnrate/web
     newName: $WEB_IMAGE
     newTag: "$TAG"
-patches:
+${extra_images}patches:
   - target:
       kind: HTTPRoute
       name: burnrate
@@ -150,6 +162,9 @@ grep -q "image: \"$API_IMAGE:$TAG\"" "$OUT/schema-job.yaml" || die "could not se
 
 n_deploy=$(grep -c '^kind: Deployment$' "$OUT/all.yaml" || true)
 info "rendered $(grep -c '^kind: ' "$OUT/all.yaml") objects, $n_deploy Deployments"
+# every container must carry the tag of this release
+stale=$(grep -E '^ +(- )?image: ' "$OUT/all.yaml" | grep -v -c -F ":$TAG" || true)
+[[ "$stale" == "0" ]] || die "$stale image reference(s) in the rendered manifests do not have the tag $TAG (REGISTRY=$REGISTRY; run deploy/scripts/gen-apps.sh)"
 
 if dry; then
   info "[dry-run] rendered files are in $OUT:"
@@ -209,9 +224,17 @@ if [[ ${#failed[@]} -gt 0 ]]; then
 fi
 
 # ---- 6. URL -----------------------------------------------------------------------------------------------------------------
-if ! kubectl -n edge wait --for=condition=Ready certificate/burnrate-tls --timeout=5s >/dev/null 2>&1; then
-  warn "the TLS certificate edge/burnrate-tls is not ready: https will fail until it is (bootstrap.sh certificate)"
-fi
 log "deployed tag $TAG"
 info "https://$HOST"
+if [[ "$PROFILE" == "small" ]]; then
+  ip=$(lb_ip)
+  if [[ -n "$ip" ]]; then
+    state_put lb-ip "$ip"
+    info "the name is served by Caddy on the edge droplet, which must forward to http://$ip:80 (deploy/README.md, \"The edge server\")"
+  else
+    warn "Gateway edge/burnrate has no load balancer address: kubectl -n edge describe gateway burnrate"
+  fi
+elif ! kubectl -n edge wait --for=condition=Ready certificate/burnrate-tls --timeout=5s >/dev/null 2>&1; then
+  warn "the TLS certificate edge/burnrate-tls is not ready: https will fail until it is (bootstrap.sh certificate)"
+fi
 info "check it: deploy/scripts/smoke.sh"

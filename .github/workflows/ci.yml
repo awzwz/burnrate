@@ -95,7 +95,7 @@ jobs:
         run: |
           docker run -d --name api --read-only --tmpfs /tmp --tmpfs /data:uid=10001,gid=10001 --cap-drop ALL \
             -e BR_MODE=local -e BR_ENV=dev -e BR_LLM_PROVIDER=fake -p 18000:8000 burnrate-api:ci
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS http://localhost:18000/healthz; then echo; exit 0; fi
             sleep 1
           done

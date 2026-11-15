@@ -83,20 +83,21 @@ done
 
 # ---- 3. Helm charts with our values -------------------------------------------------------------------------------
 # release|namespace|chart|version|values files (comma separated, relative to deploy/platform)
+# (the same charts, in the same profiles, as the steps of bootstrap.sh)
 charts_of() {
   cat <<EOF
 eg|envoy-gateway-system|oci://docker.io/envoyproxy/gateway-helm|$V_ENVOY_GATEWAY|envoy-gateway/values.yaml
 metrics-server|kube-system|metrics-server/metrics-server|$V_METRICS_SERVER|metrics-server/values.yaml
-cert-manager|cert-manager|jetstack/cert-manager|$V_CERT_MANAGER|cert-manager/values.yaml
 strimzi|platform|strimzi/strimzi-kafka-operator|$V_STRIMZI|strimzi/values.yaml
 cnpg|platform|cnpg/cloudnative-pg|$V_CNPG|cnpg/values.yaml
 keda|platform|kedacore/keda|$V_KEDA|keda/values.yaml
 kps|observability|prometheus-community/kube-prometheus-stack|$V_KPS|kube-prometheus-stack/values.yaml,kube-prometheus-stack/values-$1.yaml
-linkerd-crds|linkerd|linkerd-edge/linkerd-crds|$V_LINKERD|linkerd/crds-values.yaml
-linkerd-control-plane|linkerd|linkerd-edge/linkerd-control-plane|$V_LINKERD|linkerd/values.yaml$( [[ "$1" == full ]] && echo ",linkerd/values-full.yaml" )
 EOF
   if [[ "$1" == "full" ]]; then
     cat <<EOF
+cert-manager|cert-manager|jetstack/cert-manager|$V_CERT_MANAGER|cert-manager/values.yaml
+linkerd-crds|linkerd|linkerd-edge/linkerd-crds|$V_LINKERD|linkerd/crds-values.yaml
+linkerd-control-plane|linkerd|linkerd-edge/linkerd-control-plane|$V_LINKERD|linkerd/values.yaml,linkerd/values-full.yaml
 loki|observability|grafana/loki|$V_LOKI|loki/values.yaml
 tempo|observability|grafana/tempo|$V_TEMPO|tempo/values.yaml
 alloy|observability|grafana/alloy|$V_ALLOY|alloy/values.yaml
@@ -130,9 +131,30 @@ render_charts() { # $1 = profile -> $OUT/charts-<profile>/<namespace>__<release>
   rm -f "$OUT/l5d.key"
 }
 
+# The chart repositories by the names used above (a fresh machine or a CI runner has none of them).
+helm_repos() {
+  local name url
+  while read -r name url; do
+    helm repo add "$name" "$url" >/dev/null 2>&1 || true
+  done <<'REPOS'
+metrics-server https://kubernetes-sigs.github.io/metrics-server/
+strimzi https://strimzi.io/charts/
+cnpg https://cloudnative-pg.github.io/charts
+kedacore https://kedacore.github.io/charts
+prometheus-community https://prometheus-community.github.io/helm-charts
+jetstack https://charts.jetstack.io
+linkerd-edge https://helm.linkerd.io/edge
+grafana https://grafana.github.io/helm-charts
+argo https://argoproj.github.io/argo-helm
+hashicorp https://helm.releases.hashicorp.com
+REPOS
+  helm repo update >/dev/null 2>&1 || warn "helm repo update failed; using the local chart index"
+}
+
 if [[ $CHARTS -eq 1 || $SCHEMAS -eq 1 || $BUDGET -eq 1 ]]; then
   need helm openssl
   log "Helm charts rendered with the values of deploy/platform"
+  helm_repos
   if [[ $CHARTS -eq 1 || $SCHEMAS -eq 1 ]]; then render_charts small; render_charts full; else render_charts "$PROFILE"; fi
 fi
 
@@ -140,16 +162,18 @@ fi
 platform_manifests() { # $1 = profile -> file names, one per line
   local profile=$1 dir="$OUT/platform-$1"
   mkdir -p "$dir"
-  sed -e "s/__HOST__/burnrate.203-0-113-10.sslip.io/g" -e "s/__ISSUER__/letsencrypt-prod/g" \
-    "$PLATFORM_DIR/cert-manager/certificate.tmpl.yaml" > "$dir/certificate.yaml"
-  printf '%s\n' "$PLATFORM_DIR/namespaces/namespaces.yaml" "$PLATFORM_DIR/envoy-gateway/gateway.yaml" \
-    "$PLATFORM_DIR/envoy-gateway/proxy-$profile.yaml" "$PLATFORM_DIR/cert-manager/clusterissuers.yaml" "$dir/certificate.yaml" \
+  printf '%s\n' "$PLATFORM_DIR/namespaces/namespaces.yaml" "$PLATFORM_DIR/envoy-gateway/gateway-$profile.yaml" \
+    "$PLATFORM_DIR/envoy-gateway/proxy-$profile.yaml" \
     "$PLATFORM_DIR/cnpg/cluster-$profile.yaml" "$PLATFORM_DIR/cnpg/databases.yaml" "$PLATFORM_DIR/strimzi/kafka-$profile.yaml" \
     "$PLATFORM_DIR/valkey/valkey.yaml" "$PLATFORM_DIR/network-policies/data.yaml" "$PLATFORM_DIR/kube-prometheus-stack/monitors.yaml"
   if [[ "$profile" == "full" ]]; then
+    sed -e "s/__HOST__/burnrate.203-0-113-10.sslip.io/g" -e "s/__ISSUER__/letsencrypt-prod/g" \
+      "$PLATFORM_DIR/cert-manager/certificate.tmpl.yaml" > "$dir/certificate.yaml"
     sed -e "s#__REPO_URL__#https://github.com/example/burnrate#g" -e "s#__REVISION__#main#g" \
       "$PLATFORM_DIR/argocd/application.tmpl.yaml" > "$dir/application.yaml"
-    printf '%s\n' "$PLATFORM_DIR/strimzi/topics.yaml" "$PLATFORM_DIR/linkerd/podmonitor.yaml" "$dir/application.yaml"
+    printf '%s\n' "$PLATFORM_DIR/cert-manager/clusterissuers.yaml" "$dir/certificate.yaml" \
+      "$PLATFORM_DIR/strimzi/topics.yaml" "$PLATFORM_DIR/linkerd/podmonitor.yaml" \
+      "$PLATFORM_DIR/kube-prometheus-stack/monitors-full.yaml" "$dir/application.yaml"
   fi
 }
 
@@ -173,14 +197,16 @@ fi
 # ---- 5. requests -----------------------------------------------------------------------------------------------------------
 if [[ $BUDGET -eq 1 ]]; then
   need uv
-  log "CPU and memory requests, profile $PROFILE, $NODE_COUNT nodes (Linkerd proxies included)"
+  log "CPU and memory requests, profile $PROFILE, $NODE_COUNT nodes"
   args=()
+  [[ "$PROFILE" == "full" ]] && args+=(--mesh)     # only the full profile runs Linkerd
   for f in "$OUT/charts-$PROFILE"/*.yaml; do b=$(basename "$f" .yaml); args+=("${b%%__*}=$f"); done
   while IFS= read -r f; do args+=("default=$f"); done < <(platform_manifests "$PROFILE")
   args+=("burnrate=$OUT/apps-$PROFILE.yaml")
-  uv run --quiet --no-project --isolated --with pyyaml python -B "$SCRIPT_DIR/budget.py" --nodes "$NODE_COUNT" --mesh "${args[@]}" \
+  uv run --quiet --no-project --isolated --with pyyaml python -B "$SCRIPT_DIR/budget.py" --nodes "$NODE_COUNT" "${args[@]}" \
     | tee "$OUT/budget-$PROFILE.txt" | sed 's/^/    /'
-  info "not in this table: what DigitalOcean runs in kube-system (measured on the previous cluster: about 2 GiB on 4 nodes)"
+  info "not in this table: what DigitalOcean itself runs in kube-system (Cilium, CoreDNS, CSI, agents). Measured on the"
+  info "previous cluster: 1988 Mi on 4 nodes. Allocatable there: about 6.26 GiB per node of this size."
 fi
 
 echo

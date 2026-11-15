@@ -1,5 +1,5 @@
 # Envoy proxies of the public Gateway, profile "full": 3 replicas behind the DigitalOcean Load Balancer.
-# Referenced by GatewayClass "envoy" (gateway.yaml). The controller creates the Deployment and the
+# Referenced by GatewayClass "envoy" (gateway-full.yaml). The controller creates the Deployment and the
 # LoadBalancer Service in envoy-gateway-system; their pods carry the labels
 #   gateway.envoyproxy.io/owning-gateway-name=burnrate, gateway.envoyproxy.io/owning-gateway-namespace=edge
 # which the application's NetworkPolicy uses to let the gateway in.

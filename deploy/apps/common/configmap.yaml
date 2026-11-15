@@ -13,8 +13,9 @@ data:
   BR_ENV: prod                # also switches /docs off
   BR_DATA_DIR: /data          # an emptyDir; in cluster mode nothing durable is written there
   LOG_LEVEL: INFO
-  # public address: replaced by deploy.sh with https://burnrate.<LB-IP-with-dashes>.sslip.io (deploy/apps/env)
-  BR_PUBLIC_URL: https://burnrate.example.sslip.io
+  # public address, written by deploy.sh into deploy/apps/env on every run. Profile "small": the fixed name
+  # served by the Caddy server in front of the cluster; profile "full": burnrate.<LB-IP-with-dashes>.sslip.io
+  BR_PUBLIC_URL: https://burnrate.67.207.94.96.sslip.io
   BR_COOKIE_SECURE: "true"
   BR_DEFAULT_TIMEZONE: America/New_York
 

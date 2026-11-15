@@ -5,8 +5,11 @@
 #   everything    web:8080          the React app (nginx)
 #   /internal, /metrics, /readyz, /admin/api   answered 404 by the gateway itself, never forwarded
 #
-# The hostname is replaced by deploy.sh (deploy/apps/env). HTTP -> HTTPS is a separate route on the Gateway's
-# port 80 listener (deploy/platform/envoy-gateway/gateway.yaml).
+# Hostname: the public name of the deployment. Profile "small": burnrate.67.207.94.96.sslip.io, the address of
+# the Caddy server in front of the cluster (droplet burnrate-app). Caddy terminates TLS and forwards plain HTTP
+# with the Host header unchanged, so the route attaches to the Gateway's listener "http".
+# Profile "full" patches sectionName to "https" (TLS at the gateway) and deploy.sh sets the hostname from the
+# load balancer IP. deploy.sh writes the hostname into deploy/apps/env on every run.
 #
 # Three independent locks keep /internal and /metrics private:
 #   1. the first rule below (answer 404 at the gateway);
@@ -42,9 +45,9 @@ spec:
       kind: Gateway
       namespace: edge
       name: burnrate
-      sectionName: https
+      sectionName: http
   hostnames:
-    - burnrate.example.sslip.io
+    - burnrate.67.207.94.96.sslip.io
   rules:
     # 1. never public
     - matches:

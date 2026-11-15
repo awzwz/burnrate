@@ -73,19 +73,11 @@ def check(obj, schema: dict, path: str, errors: list[str]) -> None:
         items = schema.get("items") or {}
         for i, v in enumerate(obj):
             check(v, items, f"{path}[{i}]", errors)
-    elif t == "string":
-        if not isinstance(obj, str):
-            errors.append(f"{path}: expected a string, got {type(obj).__name__} ({obj!r})")
-    elif t == "integer":
-        if not isinstance(obj, int) or isinstance(obj, bool):
-            errors.append(f"{path}: expected an integer, got {type(obj).__name__} ({obj!r})")
-    elif t == "boolean":
-        if not isinstance(obj, bool):
-            errors.append(f"{path}: expected true or false, got {type(obj).__name__} ({obj!r})")
-    elif t == "number":
-        if not isinstance(obj, (int, float)) or isinstance(obj, bool):
-            errors.append(f"{path}: expected a number, got {type(obj).__name__} ({obj!r})")
-
+    else:
+        expected = {"string": (str,), "integer": (int,), "boolean": (bool,), "number": (int, float)}.get(t)
+        # bool is a subclass of int in Python: true is not an integer
+        if expected and (not isinstance(obj, expected) or (t != "boolean" and isinstance(obj, bool))):
+            errors.append(f"{path}: expected {t}, got {type(obj).__name__} ({obj!r})")
 
 def main() -> int:
     args = sys.argv[1:]

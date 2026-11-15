@@ -53,3 +53,10 @@ patches:
         name: burnrate-config
       data:
         OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.observability.svc.cluster.local:4318"
+  - target:
+      kind: HTTPRoute
+      name: burnrate
+    patch: |-
+      - op: replace
+        path: /spec/parentRefs/0/sectionName
+        value: https

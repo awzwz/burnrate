@@ -1,5 +1,5 @@
-# Envoy proxies of the public Gateway, profile "small": 2 replicas behind the DigitalOcean Load Balancer.
-# Referenced by GatewayClass "envoy" (gateway.yaml). The controller creates the Deployment and the
+# Envoy proxies of the Gateway, profile "small": 2 replicas (one per node) behind the DigitalOcean Load Balancer.
+# Referenced by GatewayClass "envoy" (gateway-small.yaml). The controller creates the Deployment and the
 # LoadBalancer Service in envoy-gateway-system; their pods carry the labels
 #   gateway.envoyproxy.io/owning-gateway-name=burnrate, gateway.envoyproxy.io/owning-gateway-namespace=edge
 # which the application's NetworkPolicy uses to let the gateway in.
@@ -37,12 +37,13 @@ spec:
         minAvailable: 1
       envoyService:
         type: LoadBalancer
-        # "Cluster", as on the previous cluster: every node accepts load balancer traffic, and cert-manager's
-        # self-check (a request to the public hostname from inside the cluster) reaches the proxies.
-        # The price: the application sees a node address, not the client's. To pass the client address through,
-        # enable PROXY protocol on BOTH sides (annotation do-loadbalancer-enable-proxy-protocol here and
-        # ClientTrafficPolicy.spec.enableProxyProtocol); not done and not tested.
+        # "Cluster", as on the previous cluster: every node accepts load balancer traffic.
         externalTrafficPolicy: Cluster
         annotations:
           service.beta.kubernetes.io/do-loadbalancer-name: burnrate-lb
           service.beta.kubernetes.io/do-loadbalancer-size-unit: "1"
+          # HARDENING, not enabled because it has not been tried on a cluster: let only the Caddy droplet
+          # reach the load balancer. Without it anyone who knows the load balancer address can talk to the
+          # application over plain HTTP and invent an X-Forwarded-For header. Enable, re-apply this file,
+          # then run deploy/scripts/smoke.sh; if the site stops answering, remove the line again.
+          # service.beta.kubernetes.io/do-loadbalancer-allow-rules: "ip:67.207.94.96"

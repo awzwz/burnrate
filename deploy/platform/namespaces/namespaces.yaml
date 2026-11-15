@@ -1,12 +1,12 @@
 # Namespaces of the Burn Rate cluster.
-#   burnrate       application services, workers, jobs. Meshed by Linkerd (annotation below); its HTTPRoutes
-#                  may attach to the public Gateway (label below).
-#   edge           the public Gateway, its TLS certificate and the HTTP -> HTTPS redirect
+#   burnrate       application services, workers, jobs. Its HTTPRoutes may attach to the Gateway (label below).
+#                  Profile "full": meshed by Linkerd (bootstrap.sh step linkerd sets linkerd.io/inject=enabled).
+#   edge           the Gateway (profile "full": also its TLS certificate and the HTTP -> HTTPS redirect)
 #   data           PostgreSQL, Kafka, Valkey. Never exposed outside; ingress is default-deny
 #                  (deploy/platform/network-policies/data.yaml)
 #   platform       operators: Strimzi, CloudNativePG, KEDA (+ Vault in the `full` profile)
 #   observability  Prometheus, Alertmanager, Grafana (+ Loki, Tempo, Alloy in the `full` profile)
-# Created by their Helm releases: envoy-gateway-system, cert-manager, linkerd, argocd (`full`).
+# Created by their Helm releases: envoy-gateway-system; in `full` also cert-manager, linkerd, argocd.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -14,8 +14,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: burnrate
     burnrate.io/gateway-routes: "true"
-  annotations:
-    linkerd.io/inject: enabled
 ---
 apiVersion: v1
 kind: Namespace

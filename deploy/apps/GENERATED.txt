@@ -6,7 +6,7 @@ loops (1): timer-dispatcher
 jobs (2): schema, retention
 databases (18): edge_api, webhooks, identity, funnel, cards, engine, plan, statements, asks, rehearsal, llm_gateway, guard, billing, notifications, scheduler, analytics_api, demo, backoffice
 
-profile small: 30 Deployments (18 services + 10 workers + 1 loops + web), 33 pods at minimum scale, requests 3450m CPU / 4416 Mi memory, 31 pods in the mesh
+profile small: 30 Deployments (18 services + 10 workers + 1 loops + web), 33 pods at minimum scale, requests 2200m CPU / 4416 Mi memory
 profile full: 30 Deployments (18 services + 10 workers + 1 loops + web), 62 pods at minimum scale, requests 6475m CPU / 8288 Mi memory, 59 pods in the mesh
 
 worker -> topics (consumer group = worker name)

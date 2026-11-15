@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Checks the public address of a deployed Burn Rate from the outside. Read-only: only GET requests.
 #
-#   deploy/scripts/smoke.sh                                   # host from deploy/.state/host (written by deploy.sh)
+#   deploy/scripts/smoke.sh                                   # the host deploy.sh recorded; else the small profile's
+#                                                             # fixed name burnrate.67.207.94.96.sslip.io
 #   deploy/scripts/smoke.sh burnrate.203-0-113-10.sslip.io    # or name it
+#   deploy/scripts/smoke.sh --lb 203.0.113.10                 # also ask the cluster's load balancer directly
 #   deploy/scripts/smoke.sh --help
 #
 # Checks (exit code 1 if any fails)
@@ -17,6 +19,12 @@
 #
 # Checks 3-5 are the "nothing under /internal or /metrics is reachable from outside" rule of
 # deploy/apps/common/routes.yaml.
+#
+# Profile small: the public name is answered by Caddy on the edge droplet, which forwards to the cluster. So
+# checks 6 and 7 test Caddy (its redirect, its certificate) and 1-5 test Caddy and the cluster together.
+# When the load balancer address is known (--lb, or deploy/.state/lb-ip) the script also asks the load balancer
+# directly over HTTP with the same Host header. Those lines are diagnostics and never fail the run; they tell
+# a Caddy problem from a cluster problem.
 # Environment: SMOKE_TIMEOUT (seconds per request, default 15), SMOKE_RETRIES (default 3, for a load balancer
 # that is still warming up).
 set -euo pipefail
@@ -26,17 +34,21 @@ source "$SCRIPT_DIR/lib.sh"
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed -e '$d' -e 's/^# \{0,1\}//'; }
 
-TARGET=""
-for arg in "$@"; do
-  case "$arg" in
+TARGET=""; LB=${LB_IP:-}
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     -h|--help) usage; exit 0 ;;
-    -*) usage >&2; die "unknown option: $arg" ;;
-    *) TARGET=$arg ;;
+    --lb) LB=${2:-}; [[ -n "$LB" ]] || die "--lb needs an address"; shift ;;
+    -*) usage >&2; die "unknown option: $1" ;;
+    *) TARGET=$1 ;;
   esac
+  shift
 done
 need curl openssl
 [[ -n "$TARGET" ]] || TARGET=${HOST:-$(state_get host)}
+[[ -n "$TARGET" || "$PROFILE" != "small" ]] || TARGET=$EDGE_HOST
 [[ -n "$TARGET" ]] || die "which host? pass it as an argument (deploy.sh records it in deploy/.state/host)"
+[[ -n "$LB" ]] || LB=$(state_get lb-ip)
 TARGET=${TARGET#https://}; TARGET=${TARGET#http://}; TARGET=${TARGET%%/*}
 T=${SMOKE_TIMEOUT:-15}
 RETRIES=${SMOKE_RETRIES:-3}
@@ -113,6 +125,22 @@ else
     bad "certificate: expires within 14 days ($enddate)"
   else
     ok "certificate: trusted, issuer $issuer, valid until $enddate"
+  fi
+fi
+
+# Diagnostics, profile small: the cluster's load balancer asked directly, without Caddy.
+if [[ -n "$LB" && "$PROFILE" == "small" ]]; then
+  echo
+  info "directly at the load balancer http://$LB (Host: $TARGET); diagnostics only:"
+  T=5; RETRIES=1
+  fetch "http://$LB/api/health" -H "Host: $TARGET"
+  lb_health=$CODE
+  fetch "http://$LB/internal/engine/rules" -H "Host: $TARGET"
+  info "  /api/health -> $lb_health (200 = the cluster answers)    /internal/engine/rules -> $CODE (must be 404)"
+  if [[ "$lb_health" == "000" ]]; then
+    info "  no answer: the load balancer is not ready, or it only admits the edge droplet (the allow rule in proxy-small.yaml)"
+  elif [[ "$lb_health" == "200" ]] && (( fail > 0 )); then
+    info "  the cluster answers but the public name does not: look at Caddy on the edge droplet (deploy/README.md)"
   fi
 fi
 

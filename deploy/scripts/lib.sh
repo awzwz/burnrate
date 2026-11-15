@@ -8,15 +8,19 @@ DEPLOY_DIR=${DEPLOY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 REPO_DIR=$(cd "$DEPLOY_DIR/.." && pwd)
 PLATFORM_DIR=$DEPLOY_DIR/platform
 APPS_DIR=$DEPLOY_DIR/apps
-SECRETS_DIR=$DEPLOY_DIR/secrets     # generated passwords and keys (gitignored, chmod 700)
-STATE_DIR=$DEPLOY_DIR/.state        # nothing secret: load balancer IP, last host, deploy history (gitignored)
+SECRETS_DIR=${SECRETS_DIR:-$DEPLOY_DIR/secrets}   # generated passwords and keys (gitignored, chmod 700)
+STATE_DIR=${STATE_DIR:-$DEPLOY_DIR/.state}        # nothing secret: load balancer IP, last host, deploy history (gitignored)
 
 # shellcheck source=../versions.env
 source "$DEPLOY_DIR/versions.env"
 
 PROFILE=${PROFILE:-small}                                  # small | full
 CLUSTER=${CLUSTER:-burnrate}                               # DOKS cluster name
-REGION=${REGION:-nyc3}
+REGION=${REGION:-nyc1}                                     # nyc3 offers no s-* droplet sizes to this account
+# Profile "small": the public name is fixed. It is served by Caddy on the droplet burnrate-app, which holds the
+# certificate and forwards plain HTTP to the cluster's load balancer with the Host header unchanged.
+EDGE_HOST=${EDGE_HOST:-burnrate.67.207.94.96.sslip.io}
+EDGE_IP=${EDGE_IP:-67.207.94.96}
 REGISTRY_NAME=${REGISTRY_NAME:-burnrate}                   # DigitalOcean Container Registry name (globally unique)
 REGISTRY=${REGISTRY:-registry.digitalocean.com/$REGISTRY_NAME}
 APP_NS=burnrate
@@ -89,11 +93,14 @@ kwait() {
 
 rand() { openssl rand -hex "${1:-20}"; }
 
+# a path as a person would type it from the repository root
+shown() { case "$1" in "$DEPLOY_DIR"/*) echo "deploy/${1#"$DEPLOY_DIR"/}" ;; *) echo "$1" ;; esac; }
+
 # ensure_env_file <file> KEY=value|@rand|@hex64 ...  -> creates the file once (chmod 600), never overwrites.
 ensure_env_file() {
   local f=$1; shift
   if dry; then
-    [[ -f "$f" ]] || info "[dry-run] would generate deploy/${f#"$DEPLOY_DIR"/}"
+    [[ -f "$f" ]] || info "[dry-run] would generate $(shown "$f")"
     return 0
   fi
   mkdir -p "$SECRETS_DIR"; chmod 700 "$SECRETS_DIR"
@@ -109,7 +116,7 @@ ensure_env_file() {
   done
   chmod 600 "$f"
   umask "$old_umask"
-  info "generated deploy/${f#"$DEPLOY_DIR"/} (gitignored)"
+  info "generated $(shown "$f") (chmod 600; deploy/secrets is gitignored)"
 }
 
 # env_get <file> <KEY>  -> value (for piping into other files only; never echo it to the terminal)
@@ -117,7 +124,7 @@ env_get() { grep -E "^$2=" "$1" | head -1 | cut -d= -f2-; }
 
 # secret_from_env_file <namespace> <name> <file>
 secret_from_env_file() {
-  if dry; then info "[dry-run] secret $1/$2 from deploy/${3#"$DEPLOY_DIR"/}"; return 0; fi
+  if dry; then info "[dry-run] secret $1/$2 from $(shown "$3")"; return 0; fi
   kubectl -n "$1" create secret generic "$2" --from-env-file="$3" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   info "secret $1/$2 applied"
@@ -138,15 +145,17 @@ apply_pg_secret() {
   info "secret data/pg-burnrate applied"
 }
 
-# Public address. The load balancer IP is the address of Gateway edge/burnrate.
+# The load balancer IP is the address of Gateway edge/burnrate.
 lb_ip() {
   if [[ -n "${LB_IP:-}" ]]; then echo "$LB_IP"; return 0; fi
   if dry; then echo "203.0.113.10"; return 0; fi   # documentation address, stands in for the real one
   kubectl -n edge get gateway burnrate -o jsonpath='{.status.addresses[0].value}' 2>/dev/null || true
 }
-# burnrate.<ip-with-dashes>.sslip.io (or $HOST when set)
+# Public host name: $HOST when set; profile small: the fixed name served by the edge server;
+# profile full: burnrate.<load-balancer-ip-with-dashes>.sslip.io
 public_host() {
   if [[ -n "${HOST:-}" ]]; then echo "$HOST"; return 0; fi
+  if [[ "$PROFILE" == "small" ]]; then echo "$EDGE_HOST"; return 0; fi
   local ip; ip=$(lb_ip)
   [[ -n "$ip" ]] || die "the load balancer has no IP yet (bootstrap.sh gateway), or pass HOST=..."
   echo "burnrate.${ip//./-}.sslip.io"

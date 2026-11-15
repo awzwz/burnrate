@@ -63,26 +63,34 @@ HPA_CPU_PERCENT = 70
 LAG_THRESHOLD = "50"  # messages of lag per replica before KEDA adds one
 
 PROFILES = {
-    # 3 nodes x 4 vCPU / 8 GB. edge-api, web and engine twice, everything else once.
+    # 2 nodes x 4 vCPU / 8 GB (about 12.5 GiB allocatable). edge-api, web and engine twice, everything else once.
+    # Autoscaling ceilings are low on purpose: there is no room for more (deploy/README.md, memory budget).
     "small": {
         "replicas": {"edge-api": 2, "engine": 2, "web": 2},
         "default_replicas": 1,
-        "hpa": {"edge-api": (2, 4), "engine": (2, 4), "funnel": (1, 3), "web": (2, 4)},
+        "hpa": {"edge-api": (2, 3), "engine": (2, 3), "funnel": (1, 2), "web": (2, 3)},
         "worker_min": 1,
-        "worker_max": 3,  # = partitions per topic (num.partitions=3): more consumers than partitions sit idle
+        "worker_max": 2,
+        # Two nodes have 8 vCPU between them and 30 Deployments want a share: an idle service reserves 50m
+        # instead of 100m. The autoscaled services keep 100m/200m (their CPU target is a percentage of it).
+        "idle_cpu_request": "50m",
         "hard_spread": False,
         "config_patch": {},
+        # TLS ends at the Caddy server in front of the cluster; the gateway serves plain HTTP on its port 80 listener
+        "route_listener": "http",
     },
-    # after the account limit is raised: two or more of everything
+    # after the account limit is raised: two or more of everything, TLS at the gateway
     "full": {
         "replicas": {"edge-api": 3, "engine": 3, "web": 3},
         "default_replicas": 2,
         "hpa": {"edge-api": (3, 8), "engine": (3, 8), "funnel": (2, 6), "web": (3, 6)},
         "worker_min": 2,
         "worker_max": 6,  # topics are declared with 6 partitions in this profile
+        "idle_cpu_request": "100m",
         "hard_spread": True,
         # Tempo exists only in this profile. The app has no OpenTelemetry SDK yet; the variable is ready for it.
         "config_patch": {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://tempo.observability.svc.cluster.local:4318"},
+        "route_listener": "https",
     },
 }
 TOPIC_PARTITIONS_FULL = 6
@@ -282,8 +290,11 @@ def labels(name: str, component: str) -> dict:
     return {"app.kubernetes.io/name": name, "app.kubernetes.io/component": component}
 
 
-def res(key: str) -> dict:
+def res(key: str, idle_cpu: str | None = None) -> dict:
+    """Requests and limits of a workload. idle_cpu replaces the CPU request of workloads sized by "default"."""
     cpu, mem, cpu_l, mem_l = RESOURCES.get(key, RESOURCES["default"])
+    if idle_cpu and key not in RESOURCES:
+        cpu = idle_cpu
     return {"requests": {"cpu": cpu, "memory": mem}, "limits": {"cpu": cpu_l, "memory": mem_l}}
 
 
@@ -308,7 +319,7 @@ def spread(name: str, hard: bool) -> list:
     return [c]
 
 
-def api_container(name: str, image: str, *, http: bool) -> dict:
+def api_container(name: str, image: str, *, http: bool, idle_cpu: str | None = None) -> dict:
     c: dict = {
         "name": "app",
         "image": image,
@@ -326,7 +337,7 @@ def api_container(name: str, image: str, *, http: bool) -> dict:
                               "failureThreshold": 3}
         # keep serving while the endpoint is being removed from the Service, then uvicorn drains on SIGTERM
         c["lifecycle"] = {"preStop": {"sleep": {"seconds": 5}}}
-    c["resources"] = res(name)
+    c["resources"] = res(name, idle_cpu)
     c["securityContext"] = dict(CONTAINER_SECURITY)
     # read-only root filesystem: uploads are spooled to /tmp, BR_DATA_DIR=/data
     c["volumeMounts"] = [{"name": "tmp", "mountPath": "/tmp"}, {"name": "data", "mountPath": "/data"}]
@@ -337,7 +348,7 @@ API_VOLUMES = [{"name": "tmp", "emptyDir": {"sizeLimit": "256Mi"}}, {"name": "da
 
 
 def api_pod(name: str, image: str, pull_secret: str, *, http: bool, grace: int, spread_hard: bool | None,
-            restart: str | None = None) -> dict:
+            restart: str | None = None, idle_cpu: str | None = None) -> dict:
     spec: dict = {}
     if restart:
         spec["restartPolicy"] = restart
@@ -347,7 +358,7 @@ def api_pod(name: str, image: str, pull_secret: str, *, http: bool, grace: int, 
     spec["securityContext"] = pod_security(API_UID)
     if spread_hard is not None:
         spec["topologySpreadConstraints"] = spread(name, spread_hard)
-    spec["containers"] = [api_container(name, image, http=http)]
+    spec["containers"] = [api_container(name, image, http=http, idle_cpu=idle_cpu)]
     spec["volumes"] = API_VOLUMES
     return spec
 
@@ -371,6 +382,9 @@ def deployment(name: str, component: str, pod: dict, *, replicas: int | None, st
 
 
 ROLLING = {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}}
+# Queue consumers: stop the old pod first. Nobody waits for a worker, the messages wait in Kafka, and a rollout
+# then needs no spare memory for a second copy (one consumer-group rebalance instead of two as well).
+ROLLING_NO_SURGE = {"type": "RollingUpdate", "rollingUpdate": {"maxSurge": 0, "maxUnavailable": 1}}
 
 
 def service(name: str, component: str, port: int) -> dict:
@@ -431,12 +445,15 @@ def gen_profile(profile: str, code: Code, worker_topics: dict[str, list[str]], o
     files: list[str] = []
     stats = {"deployments": 0, "pods": 0, "cpu_m": 0, "mem_mi": 0, "meshed_pods": 0}
 
+    def idle(name: str) -> str | None:
+        return None if name in p["hpa"] else p["idle_cpu_request"]
+
     def count(key: str, n: int, meshed: bool = True) -> None:
-        cpu, mem = RESOURCES.get(key, RESOURCES["default"])[:2]
+        r = res(key, idle(key))["requests"]
         stats["deployments"] += 1
         stats["pods"] += n
-        stats["cpu_m"] += n * int(cpu.rstrip("m"))
-        stats["mem_mi"] += n * int(mem.rstrip("Mi"))
+        stats["cpu_m"] += n * int(r["cpu"].rstrip("m"))
+        stats["mem_mi"] += n * int(r["memory"].rstrip("Mi"))
         stats["meshed_pods"] += n if meshed else 0
 
     def write(rel: str, text: str) -> None:
@@ -454,7 +471,7 @@ def gen_profile(profile: str, code: Code, worker_topics: dict[str, list[str]], o
         scaled = s in p["hpa"]
         lo, hi = p["hpa"].get(s, (n, n))
         pod = api_pod(s, api, pull_secret, http=True, grace=75 if s in STREAMING else 30,
-                      spread_hard=p["hard_spread"] if (hi >= 2) else None)
+                      spread_hard=p["hard_spread"] if (hi >= 2) else None, idle_cpu=idle(s))
         # replicas is left out when an autoscaler owns it: `kubectl apply` must not reset a scaled-out Deployment
         docs = [deployment(s, "service", pod, replicas=None if scaled else n, strategy=ROLLING),
                 service(s, "service", 8000)]
@@ -469,8 +486,8 @@ def gen_profile(profile: str, code: Code, worker_topics: dict[str, list[str]], o
     for w in code.workers:
         topics = worker_topics.get(w, [])
         lo, hi = p["worker_min"], p["worker_max"]
-        pod = api_pod(w, api, pull_secret, http=False, grace=30, spread_hard=p["hard_spread"])
-        docs = [deployment(w, "worker", pod, replicas=None, strategy=ROLLING, min_ready=20)]
+        pod = api_pod(w, api, pull_secret, http=False, grace=30, spread_hard=p["hard_spread"], idle_cpu=idle(w))
+        docs = [deployment(w, "worker", pod, replicas=None, strategy=ROLLING_NO_SURGE, min_ready=20)]
         if lo >= 2:
             docs.append(pdb(w, "worker"))
         autoscaling.append(scaled_object(w, topics, lo, hi))
@@ -484,7 +501,7 @@ def gen_profile(profile: str, code: Code, worker_topics: dict[str, list[str]], o
 
     # ---- loops: exactly one replica, never two at once ----
     for lp in code.loops:
-        pod = api_pod(lp, api, pull_secret, http=False, grace=30, spread_hard=None)
+        pod = api_pod(lp, api, pull_secret, http=False, grace=30, spread_hard=None, idle_cpu=idle(lp))
         write(f"loops/{lp}.yaml", dump(
             deployment(lp, "loop", pod, replicas=1, strategy={"type": "Recreate"}, min_ready=20),
             header=f"{head}\nLoop \"{lp}\": a single replica in every profile (strategy Recreate: old pod stops before the\n"
@@ -554,9 +571,15 @@ def gen_profile(profile: str, code: Code, worker_topics: dict[str, list[str]], o
         # hostname, image tags and the config hash of this deployment (written by deploy.sh)
         "components": ["../env"],
     }
+    patches = []
     if p["config_patch"]:
         patch = dump({"apiVersion": "v1", "kind": "ConfigMap", "metadata": {"name": CONFIGMAP}, "data": p["config_patch"]})
-        kust["patches"] = [{"patch": patch.rstrip("\n")}]
+        patches.append({"patch": patch.rstrip("\n")})
+    if p["route_listener"] != "http":  # deploy/apps/common/routes.yaml attaches to the listener "http"
+        patches.append({"target": {"kind": "HTTPRoute", "name": "burnrate"},
+                        "patch": "- op: replace\n  path: /spec/parentRefs/0/sectionName\n  value: " + p["route_listener"]})
+    if patches:
+        kust["patches"] = patches
     text = dump(kust, header=(
         f"{head}\nBurn Rate application, profile \"{profile}\".\n"
         f"  kubectl kustomize deploy/apps/{profile}        render\n"
@@ -693,7 +716,7 @@ def main() -> int:
         for profile, st in stats.items():
             rep.append(f"profile {profile}: {st['deployments']} Deployments ({len(code.services)} services + {len(code.workers)} workers + "
                        f"{len(code.loops)} loops + web), {st['pods']} pods at minimum scale, requests {st['cpu_m']}m CPU / "
-                       f"{st['mem_mi']} Mi memory, {st['meshed_pods']} pods in the mesh")
+                       f"{st['mem_mi']} Mi memory" + (f", {st['meshed_pods']} pods in the mesh" if profile == "full" else ""))
         rep += ["", "worker -> topics (consumer group = worker name)"]
         for w in code.workers:
             rep.append(f"  {w:<22} {', '.join(worker_topics[w]) or '-':<70} [{source.get(w, 'NOT FOUND')}]")
@@ -702,8 +725,8 @@ def main() -> int:
             rep.append("  Such a worker exits at start with \"worker <name> has no subscriptions\" (burnrate/common/bus.py) and its")
             rep.append("  pod goes into CrashLoopBackOff. Its ScaledObject has one trigger without a topic.")
         rep += ["", f"topics declared in deploy/apps/topics.txt ({len(declared)}): {', '.join(declared)}",
-                f"topics used by the code but not declared ({len(undeclared)}; added to platform/strimzi/topics.yaml): "
-                f"{', '.join(undeclared) or 'none'}",
+                (f"topics used by the code but not declared ({len(undeclared)}; added to platform/strimzi/topics.yaml): "
+                 f"{', '.join(undeclared) or 'none'}"),
                 f"topics published but consumed by no worker ({len(unconsumed)}): {', '.join(unconsumed) or 'none'}",
                 f"topics consumed but published nowhere in the code ({len(unpublished)}): {', '.join(unpublished) or 'none'}",
                 "", f"warnings ({len(code.warnings)})"]

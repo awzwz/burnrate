@@ -1,6 +1,6 @@
 # What belongs to ONE deployment of the application: public hostname, image tags, configuration hash.
-# REWRITTEN by deploy/scripts/deploy.sh on every run; the values below are placeholders that keep
-# `kubectl kustomize deploy/apps` working on a fresh checkout. Included by ../small and ../full.
+# REWRITTEN by deploy/scripts/deploy.sh on every run; the values below are the defaults of the small profile
+# and keep `kubectl kustomize deploy/apps` working on a fresh checkout. Included by ../small and ../full.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 images:
@@ -17,14 +17,14 @@ patches:
     patch: |-
       - op: replace
         path: /spec/hostnames/0
-        value: burnrate.example.sslip.io
+        value: burnrate.67.207.94.96.sslip.io
   - target:
       kind: ConfigMap
       name: burnrate-config
     patch: |-
       - op: replace
         path: /data/BR_PUBLIC_URL
-        value: https://burnrate.example.sslip.io
+        value: https://burnrate.67.207.94.96.sslip.io
   # a new hash rolls every Deployment, so a changed ConfigMap reaches the pods
   - target:
       kind: Deployment

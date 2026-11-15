@@ -11,15 +11,20 @@
 # Idempotent: every step is `helm upgrade --install` or `kubectl apply`, and a password is generated only when
 # its file in deploy/secrets/ does not exist yet. Secret values are never printed.
 #
+# Profile small (2 nodes): Envoy Gateway on plain HTTP behind the Caddy edge server, metrics-server, Kafka,
+# PostgreSQL, Valkey, KEDA, Prometheus + Grafana, NetworkPolicies. No cert-manager and no Linkerd: TLS ends at
+# Caddy, and the mesh does not fit the memory of two nodes (numbers in deploy/README.md).
+# Profile full adds cert-manager + certificate (TLS at the gateway), Linkerd, Loki, Tempo, Alloy, Argo CD, Vault.
+#
 # Environment:
 #   PROFILE=small|full     footprint (deploy/README.md)
-#   LINKERD=0              leave the service mesh out
 #   NETPOL=0               do not apply the NetworkPolicies of the data namespace
-#   ISSUER=letsencrypt-staging   when Let's Encrypt production is rate limited
-#   FORCE_LINKERD=1        upgrade an installed Linkerd (regenerates its webhook certificates)
-#   VAULT_AUTO_INIT=1      (full) initialise and unseal Vault, keep the keys in deploy/secrets/vault-init.json
-#   ARGOCD_REPO_URL=https://github.com/<owner>/<repo>  (full) apply the Argo CD Application
-# Needs: kubectl (context = the burnrate cluster), helm, doctl, openssl, jq; `step` for Linkerd's certificates.
+#   (full) LINKERD=0             leave the service mesh out
+#   (full) ISSUER=letsencrypt-staging   when Let's Encrypt production is rate limited
+#   (full) FORCE_LINKERD=1       upgrade an installed Linkerd (regenerates its webhook certificates)
+#   (full) VAULT_AUTO_INIT=1     initialise and unseal Vault, keep the keys in deploy/secrets/vault-init.json
+#   (full) ARGOCD_REPO_URL=https://github.com/<owner>/<repo>   apply the Argo CD Application
+# Needs: kubectl (context = the burnrate cluster), helm, doctl, openssl, jq; in full also `step` (Linkerd certificates).
 set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=lib.sh
@@ -29,19 +34,19 @@ ISSUER=${ISSUER:-letsencrypt-prod}
 
 usage() { sed -n '2,/^set -euo/p' "$0" | sed -e '$d' -e 's/^# \{0,1\}//'; }
 
-STEPS_SMALL=(namespaces registry gateway metrics_server cert_manager certificate kafka postgres valkey keda
-             observability linkerd netpol)
-STEPS_FULL=("${STEPS_SMALL[@]}" argocd vault)
+STEPS_SMALL=(namespaces registry gateway metrics_server kafka postgres valkey keda observability netpol)
+STEPS_FULL=(namespaces registry gateway metrics_server cert_manager certificate kafka postgres valkey keda
+            observability linkerd netpol argocd vault)
 
 repos() {
   helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ >/dev/null 2>&1 || true
-  helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
   helm repo add strimzi https://strimzi.io/charts/ >/dev/null 2>&1 || true
   helm repo add cnpg https://cloudnative-pg.github.io/charts >/dev/null 2>&1 || true
   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
   helm repo add kedacore https://kedacore.github.io/charts >/dev/null 2>&1 || true
-  helm repo add linkerd-edge https://helm.linkerd.io/edge >/dev/null 2>&1 || true
   if [[ "$PROFILE" == "full" ]]; then
+    helm repo add jetstack https://charts.jetstack.io >/dev/null 2>&1 || true
+    helm repo add linkerd-edge https://helm.linkerd.io/edge >/dev/null 2>&1 || true
     helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
     helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true
     helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
@@ -53,11 +58,7 @@ repos() {
 step_namespaces() {
   log "namespaces"
   kapply -f "$P/namespaces/namespaces.yaml"
-  info "burnrate (Linkerd inject, may attach routes to the gateway), edge, data, platform, observability"
-  if [[ "${LINKERD:-1}" == "0" ]] && ! dry; then
-    kubectl annotate ns "$APP_NS" linkerd.io/inject=disabled --overwrite >/dev/null
-    info "LINKERD=0: namespace $APP_NS is annotated linkerd.io/inject=disabled"
-  fi
+  info "burnrate (may attach routes to the gateway), edge, data, platform, observability"
 }
 
 # ---- registry: let the cluster pull from registry.digitalocean.com/$REGISTRY_NAME ------------------------------
@@ -91,11 +92,20 @@ gateway_preflight() {
   return 0
 }
 
+# Profile small: what has to be on the edge server for the public name to reach this cluster.
+edge_hint() {
+  info "Caddy on the droplet burnrate-app ($EDGE_IP) must forward to it. In its Caddyfile:"
+  info "    $EDGE_HOST {"
+  info "        reverse_proxy http://$1:80"
+  info "    }"
+  info "then: sudo systemctl reload caddy     (details: deploy/README.md, \"The edge server\")"
+}
+
 step_gateway() {
-  log "Envoy Gateway $V_ENVOY_GATEWAY + Gateway edge/burnrate"
+  log "Envoy Gateway $V_ENVOY_GATEWAY + Gateway edge/burnrate (profile $PROFILE)"
   dry || gateway_preflight
   helm_up eg envoy-gateway-system oci://docker.io/envoyproxy/gateway-helm "$V_ENVOY_GATEWAY" "$P/envoy-gateway/values.yaml"
-  kapply -f "$P/envoy-gateway/proxy-$PROFILE.yaml" -f "$P/envoy-gateway/gateway.yaml"
+  kapply -f "$P/envoy-gateway/proxy-$PROFILE.yaml" -f "$P/envoy-gateway/gateway-$PROFILE.yaml"
   if dry; then info "[dry-run] wait for the load balancer IP of Gateway edge/burnrate"; return 0; fi
   info "waiting for the DigitalOcean load balancer (2-4 minutes)..."
   local ip=""
@@ -106,7 +116,12 @@ step_gateway() {
   done
   [[ -n "$ip" ]] || die "Gateway edge/burnrate has no address after 10 minutes: kubectl -n edge describe gateway burnrate; kubectl -n envoy-gateway-system get pods,svc"
   state_put lb-ip "$ip"
-  info "load balancer $LB_NAME: $ip  ->  https://$(public_host)"
+  if [[ "$PROFILE" == "small" ]]; then
+    info "load balancer $LB_NAME: $ip (plain HTTP on port 80)"
+    edge_hint "$ip"
+  else
+    info "load balancer $LB_NAME: $ip  ->  https://$(public_host)"
+  fi
 }
 
 step_metrics_server() {
@@ -194,7 +209,7 @@ step_observability() {
     helm_up loki observability grafana/loki "$V_LOKI" "$P/loki/values.yaml"
     helm_up tempo observability grafana/tempo "$V_TEMPO" "$P/tempo/values.yaml"
     helm_up alloy observability grafana/alloy "$V_ALLOY" "$P/alloy/values.yaml"
-    kapply -f "$P/linkerd/podmonitor.yaml"
+    kapply -f "$P/linkerd/podmonitor.yaml" -f "$P/kube-prometheus-stack/monitors-full.yaml"
   fi
   kapply -f "$P/kube-prometheus-stack/monitors.yaml"
   kapply -k "$P/grafana-dashboards"
@@ -373,6 +388,9 @@ main() {
     "step_$s"
   done
   log "done (profile $PROFILE): ${steps[*]}"
-  dry || info "next: deploy/scripts/secrets.sh, deploy/scripts/build.sh, deploy/scripts/deploy.sh, deploy/scripts/smoke.sh"
+  if ! dry; then
+    if [[ "$PROFILE" == "small" && -n "$(state_get lb-ip)" ]]; then edge_hint "$(state_get lb-ip)"; fi
+    info "next: deploy/scripts/secrets.sh, deploy/scripts/build.sh, deploy/scripts/deploy.sh, deploy/scripts/smoke.sh"
+  fi
 }
 main "$@"
