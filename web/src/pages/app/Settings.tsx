@@ -356,7 +356,18 @@ export default function Settings() {
 
       {!entitled && sub && (
         <p className="note" style={{ marginTop: 18 }} role="status">
-          <b>Your plan is not active right now.</b> Resume it below to open Today, Cards, Asks and Statements again.
+          <b>Your plan is not active right now.</b>{" "}
+          {sub.status === "refunded" || sub.status === "canceled" ? (
+            <>
+              To open Today, Cards, Asks and Statements again,{" "}
+              <Link className="textlink" to="/plans">
+                choose a plan
+              </Link>
+              .
+            </>
+          ) : (
+            "Resume it below to open Today, Cards, Asks and Statements again."
+          )}
         </p>
       )}
 

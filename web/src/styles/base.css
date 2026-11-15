@@ -318,7 +318,8 @@ select.inp { padding-right: 40px; background-image: url("data:image/svg+xml,%3Cs
   .app.funnel { max-width: none; }
   .app.funnel .top { height: 60px; padding: 0 24px; }
   .app.funnel .body, .app.funnel .cta-wrap { width: 100%; max-width: 612px; margin: 0 auto; }
-  .app.funnel .body { padding-top: 32px; }
+  /* On a laptop the button follows the content instead of sitting at the bottom of the window. */
+  .app.funnel .body { padding-top: 32px; flex: 0 0 auto; }
   .app.funnel .cta-wrap { position: static; padding-bottom: 48px; }
 }
 
