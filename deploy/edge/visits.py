@@ -29,6 +29,7 @@ ACTIONS = [
     (re.compile(r"^POST /api/session"), "opened"),
     (re.compile(r"^POST /api/demo/start"), "demo"),
     (re.compile(r"^POST /api/demo/clock"), "demo clock"),
+    (re.compile(r"^POST /api/quiz/card-burn"), "landing figures"),  # the landing computes its sample cards
     (re.compile(r"^(PUT|POST) /api/quiz"), "quiz"),
     (re.compile(r"^GET /api/quiz/result"), "result"),
     (re.compile(r"^GET /api/billing/plans"), "plans"),
