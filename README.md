@@ -69,7 +69,7 @@ OpenAI `gpt-5.4-mini` is the default model and Claude can be switched on. Daily 
 ### Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     B[Browser] -->|HTTPS| C[Caddy edge server<br/>Let's Encrypt]
     C -->|HTTP| LB[DigitalOcean<br/>Load Balancer]
     LB --> G[Gateway API<br/>Cilium Envoy]
