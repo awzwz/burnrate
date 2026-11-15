@@ -12,7 +12,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<{ 
 beforeEach(async () => {
   localStorage.clear();
   await call("POST", "/auth/logout");
-  await call("POST", "/demo/start", { persona: "maya" });
+  await call("POST", "/demo/start", { persona: "aziz" });
 });
 
 describe("mock API: the sample persona", () => {

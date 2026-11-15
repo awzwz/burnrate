@@ -99,7 +99,7 @@ function me(d: DB): Me {
     subscription: acc ? acc.subscription : null,
     entitled: entitled(acc),
     today: acc ? acc.today : realToday(),
-    demo: acc?.demo ? { persona: "maya", started_on: acc.story_start, today: acc.today, real_today: acc.real_today } : null,
+    demo: acc?.demo ? { persona: "aziz", started_on: acc.story_start, today: acc.today, real_today: acc.real_today } : null,
     config: { billing_provider: "demo", test_mode: true, test_card: TEST_CARD, llm_provider: "fake", sms_live: false },
   };
 }

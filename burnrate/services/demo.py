@@ -47,13 +47,13 @@ async def _burn(cards: list[dict], on: dt.date) -> float:
 
 
 class StartReq(BaseModel):
-    persona: str = "maya"
+    persona: str = "aziz"
     tz: str = ""
 
 
 @router.post("/start")
 async def start(req: StartReq):
-    """Create the persona as a real account with real history, and set the clock to her payday morning."""
+    """Create the persona as a real account with real history, and set the clock to the persona's payday morning."""
     if not settings().demo_enabled:
         raise Forbidden("The demo is switched off.", code="demo_disabled")
     tzname = req.tz or settings().default_timezone

@@ -1,22 +1,22 @@
 """The sample persona used by "Use sample numbers" in the quiz and by the guest demo.
 
-Maya, 34, paid every two weeks, three cards, $10,500 of revolving balance. Every date is relative to `d0`,
-the payday on which her story starts, so the demo looks the same whenever it is opened.
+Aziz, 34, paid every two weeks, three cards, $10,500 of revolving balance. Every date is relative to `d0`,
+the payday on which the story starts, so the demo looks the same whenever it is opened.
 """
 from __future__ import annotations
 
 import datetime as dt
 
-NAME = "maya"
+NAME = "aziz"
 PER_PAYDAY_CENTS = 30_000
-STARTED_DAYS_AGO = 42  # she subscribed three paychecks before d0
+STARTED_DAYS_AGO = 42  # subscribed three paychecks before d0
 PLAN_ID = "w12"
 PHONE = "+1 (555) 010-0142"  # 555-01xx numbers are reserved for fiction
-EMAIL = "maya@example.com"
+EMAIL = "aziz@example.com"
 
 
 def first_payday_on_or_after(day: dt.date) -> dt.date:
-    """Maya is paid on Fridays."""
+    """Aziz is paid on Fridays."""
     return day + dt.timedelta(days=(4 - day.weekday()) % 7)
 
 

@@ -30,7 +30,7 @@ from burnrate.engine.simulate import amortize, compare, payment_for_term, projec
 D = dt.date
 
 
-def maya() -> list[Card]:
+def aziz() -> list[Card]:
     return [
         Card("cap", "Capital One Quicksilver", "capital_one", 520_000, 2799, close_day=11, due_day=9, statement_min_cents=17_133),
         Card("chase", "Chase Freedom Unlimited", "chase", 340_000, 2249, close_day=9, due_day=6),
@@ -112,9 +112,9 @@ def test_discover_minimum_takes_the_greatest_branch_and_rounds_up():
 
 
 def test_printed_minimum_overrides_the_rule():
-    cap = maya()[0]
+    cap = aziz()[0]
     assert current_min_cents(cap) == 17_133
-    assert current_min_cents(maya()[2]) == 6_000
+    assert current_min_cents(aziz()[2]) == 6_000
 
 
 # ---------- dates ----------
@@ -123,7 +123,7 @@ def test_day_of_month_helpers_clamp_short_months():
     assert next_on_or_after(31, D(2026, 2, 1)) == D(2026, 2, 28)
     assert next_on_or_after(9, D(2026, 11, 20)) == D(2026, 12, 9)
     assert last_on_or_before(11, D(2026, 12, 8)) == D(2026, 11, 11)
-    assert statement_window(maya()[0], D(2026, 12, 9)) == (D(2026, 11, 11), D(2026, 12, 9))
+    assert statement_window(aziz()[0], D(2026, 12, 9)) == (D(2026, 11, 11), D(2026, 12, 9))
 
 
 @pytest.mark.parametrize("freq,anchor,start,expected", [
@@ -148,13 +148,13 @@ def test_biweekly_has_three_paydays_in_some_months():
 # ---------- the demo persona ----------
 
 def test_burn_per_day_for_three_cards():
-    cards = maya()
+    cards = aziz()
     assert [round(float(burn_per_day(c)), 2) for c in cards] == [398.76, 209.50, 130.08]
     assert round_cents(total_burn_per_day(cards)) == 738  # $7.38 a day
 
 
 def test_payday_instruction_for_the_persona():
-    ins = payday_instruction(maya(), SCHEDULE, D(2026, 11, 20))
+    ins = payday_instruction(aziz(), SCHEDULE, D(2026, 11, 20))
     s = ins.send
     assert ins.strategy == "avalanche" and ins.next_payday == D(2026, 12, 4)
     assert (s.card_id, s.amount_cents, s.covers_min, s.min_cents, s.extra_cents) == ("cap", 24_000, True, 17_133, 6_867)
@@ -166,14 +166,14 @@ def test_payday_instruction_for_the_persona():
 
 
 def test_next_payday_reserves_the_other_minimum():
-    first = payday_instruction(maya(), SCHEDULE, D(2026, 11, 20))
+    first = payday_instruction(aziz(), SCHEDULE, D(2026, 11, 20))
     second = payday_instruction(first.cards_after, SCHEDULE, D(2026, 12, 4))
     assert second.send.card_id == "cap" and second.send.amount_cents == 30_000 - 9_741
     assert ("chase", "this_paycheck") in {(r.card_id, r.source) for r in second.reserves}
 
 
 def test_every_paycheck_is_fully_assigned_and_never_overspent():
-    cards = maya()
+    cards = aziz()
     day = D(2026, 11, 20)
     for _ in range(12):
         ins = payday_instruction(cards, SCHEDULE, day)
@@ -183,12 +183,12 @@ def test_every_paycheck_is_fully_assigned_and_never_overspent():
 
 
 def test_short_paycheck_keeps_minimums_first():
-    ins = payday_instruction(maya(), SCHEDULE, D(2026, 11, 20), budget_cents=4_000)
+    ins = payday_instruction(aziz(), SCHEDULE, D(2026, 11, 20), budget_cents=4_000)
     assert ins.short_by_cents == 2_000 and ins.sends == [] and ins.strategy == "minimums_only"
 
 
 def test_a_small_card_is_finished_first_when_one_paycheck_can_do_it():
-    cards = maya()
+    cards = aziz()
     cards[2] = Card("disc", "Discover it", "discover", 15_000, 2499, close_day=30, due_day=27)
     ins = payday_instruction(cards, SCHEDULE, D(2026, 11, 20))
     assert ins.strategy == "finish_small"
@@ -236,7 +236,7 @@ def test_regulation_z_sample_statement_thirty_six_month_payment():
 
 
 def test_strategy_ordering_holds():
-    r = compare(maya(), 60_000)
+    r = compare(aziz(), 60_000)
     assert (r["avalanche"].months, r["snowball"].months) == (22, 23)
     assert r["avalanche"].interest_cents <= r["snowball"].interest_cents <= r["minimums"].interest_cents
     assert r["avalanche"].interest_cents == 267_083
@@ -245,7 +245,7 @@ def test_strategy_ordering_holds():
 
 
 def test_a_bigger_budget_never_takes_longer_or_costs_more():
-    a, b = project(maya(), 50_000), project(maya(), 70_000)
+    a, b = project(aziz(), 50_000), project(aziz(), 70_000)
     assert b.months <= a.months and b.interest_cents < a.interest_cents
 
 

@@ -22,26 +22,26 @@ About 111 million Americans don't pay their card in full each month. The average
 - **The wrong day.** Paying on the due date instead of payday leaves the balance on the card longer. Autopay at the minimum quietly replaces bigger payments.
 - **Never asking.** Most people never call to ask for a lower rate or a late-fee refund. Of those who do, most get something.
 
-Maya, our reference user, has three cards and $10,500 of balance. That costs her **$7.38 a day**, or $2,695 a year.
+Aziz, our reference user, has three cards and $10,500 of balance. That costs **$7.38 a day**, or $2,695 a year.
 
 ## What the product does
 
 | Rhythm | What happens | Where in the code |
 |---|---|---|
-| **First 14 days: the asks** | A short list of requests to her issuers: lower rate, late-fee refund, annual fee, due-date move. Each one comes with a script built from her numbers, a call card to tap through during the call, a practice call with an AI playing the bank rep, and an outcome log. | `services/asks.py`, `services/rehearsal.py` |
+| **First 14 days: the asks** | A short list of requests to the card issuers: lower rate, late-fee refund, annual fee, due-date move. Each one comes with a script built from the user's numbers, a call card to tap through during the call, a practice call with an AI playing the bank rep, and an outcome log. | `services/asks.py`, `services/rehearsal.py` |
 | **Every payday: one amount, one card** | Minimums stay on autopay as a safety net. Everything above them goes to one card, on the day the paycheck lands. Short paycheck, a different amount, undo: all handled. | `engine/plan.py`, `services/plan.py` |
-| **Every statement: a check** | She uploads or pastes the statement. The model reads it, arithmetic checks it, and our forecast is set next to the bank's number with the difference explained. Then the ledger is corrected to the bank's figure. | `services/statements.py`, `engine/checks.py` |
+| **Every statement: a check** | The user uploads or pastes the statement. The model reads it, arithmetic checks it, and our forecast is set next to the bank's number with the difference explained. Then the ledger is corrected to the bank's figure. | `services/statements.py`, `engine/checks.py` |
 
 Two more things run all the time:
 - **The burn chart** moves only on real events: a payment, a lower rate, a new charge.
-- **The paid-for-itself meter** compares what she found with what she paid us. It shows the number even when it is negative.
+- **The paid-for-itself meter** compares what the user saved with what they paid us. It shows the number even when it is negative.
 
-**Burn Rate never moves money and never contacts a bank.** She makes every payment and every call herself. It is planning software, not debt relief or credit repair, and a guard service blocks wording that would say otherwise.
+**Burn Rate never moves money and never contacts a bank.** The user makes every payment and every call. It is planning software, not debt relief or credit repair, and a guard service blocks wording that would say otherwise.
 
 ## Try it in two minutes
 
-1. Open the [live link](https://burnrate.67.207.94.96.sslip.io) and press **Try the demo**. You are Maya, on a payday.
-2. The demo bar at the top moves time: **Next payday**, **Next statement**, **+1 day**. **Inbox** shows the texts and emails she would get.
+1. Open the [live link](https://burnrate.67.207.94.96.sslip.io) and press **Try the demo**. You are Aziz, on a payday.
+2. The demo bar at the top moves time: **Next payday**, **Next statement**, **+1 day**. **Inbox** shows the texts and emails the user would get.
 3. **Asks** → pick one → **Rehearse**. The bank rep is a live model.
 4. **Statements**: after **Next statement**, open the new statement to see the forecast checked against the bank's number.
 5. For the paid path, open the site in a private window and press **See my number**. Answer the quiz, use the sample numbers, pick a plan and pay with `4242 4242 4242 4242`, any future date, any CVC.

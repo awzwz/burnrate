@@ -250,7 +250,7 @@ function sms(acc: Account, body: string, link: string | null, daysAgo = 0, hour 
   acc.inbox.unshift({ id: nextId("msg", acc), channel: "sms", to: acc.prefs.phone ?? "+1 (555) 010-0142", subject: null, body, link, sent_at: stamp(addDays(acc.today, -daysAgo), hour) });
 }
 function email(acc: Account, subject: string, body: string, link: string | null, daysAgo = 0, hour = 9): void {
-  acc.inbox.unshift({ id: nextId("msg", acc), channel: "email", to: acc.email ?? "maya@example.com", subject, body, link, sent_at: stamp(addDays(acc.today, -daysAgo), hour) });
+  acc.inbox.unshift({ id: nextId("msg", acc), channel: "email", to: acc.email ?? "aziz@example.com", subject, body, link, sent_at: stamp(addDays(acc.today, -daysAgo), hour) });
 }
 /** A timestamp at `hour` o'clock on that date in the viewer's own time zone. */
 export function stamp(iso: string, hour = 9): string {
@@ -353,7 +353,7 @@ export function seedDemo(): Account {
   const d0 = addDays(real, (5 - dow + 7) % 7);
   const day = (n: number) => addDays(d0, n);
   const dom = (n: number, cap = 28) => Math.min(Number(day(n).slice(8, 10)), cap);
-  const acc = emptyAccount(true, d0, { frequency: "biweekly", anchor: d0, per_payday_cents: 30000, second_day: 15 }, PLANS[2], day(-42), "maya@example.com");
+  const acc = emptyAccount(true, d0, { frequency: "biweekly", anchor: d0, per_payday_cents: 30000, second_day: 15 }, PLANS[2], day(-42), "aziz@example.com");
   acc.prefs.phone = "+1 (555) 010-0142";
   acc.prefs.sms_opt_in = true;
 

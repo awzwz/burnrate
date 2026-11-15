@@ -173,7 +173,7 @@ async def logout(response: Response):
 # ---------- demo ----------
 
 class DemoStart(BaseModel):
-    persona: str = "maya"
+    persona: str = "aziz"
 
 
 @public.post("/demo/start")

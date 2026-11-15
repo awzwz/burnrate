@@ -113,7 +113,7 @@ async def test_cancel_pause_and_refund(stack):
 
 async def start_demo(s) -> dict:
     me = await ok(s, "POST", "/demo/start", json={})
-    assert me["demo"]["persona"] == "maya" and me["entitled"] and me["user"]["demo"]
+    assert me["demo"]["persona"] == "aziz" and me["entitled"] and me["user"]["demo"]
     return me
 
 

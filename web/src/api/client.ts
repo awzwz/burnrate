@@ -142,7 +142,7 @@ export const api = {
   logout: () => post<Record<string, never>>("/auth/logout"),
 
   // demo
-  demoStart: () => post<Me>("/demo/start", { persona: "maya" }),
+  demoStart: () => post<Me>("/demo/start", { persona: "aziz" }),
   demoClock: (action: ClockAction) => post<ClockResult>("/demo/clock", { action }),
   inbox: () => get<{ messages: InboxMessage[] }>("/inbox"),
 

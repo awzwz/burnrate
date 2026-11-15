@@ -28,7 +28,7 @@ Me = {
   subscription: Subscription|null,
   entitled: bool,                 // true for active subscribers and for demo sessions
   today: "2026-11-20",            // the user's current date (demo clock applied)
-  demo: {persona: "maya", started_on, today, real_today} | null,
+  demo: {persona: "aziz", started_on, today, real_today} | null,
   config: {billing_provider: "demo"|"stripe", test_mode: bool, test_card: "4242 4242 4242 4242",
            llm_provider: "openai"|"anthropic"|"fake", sms_live: bool}
 }
@@ -38,7 +38,7 @@ Me = {
 
 | Call | Body | Returns |
 |---|---|---|
-| `POST /api/demo/start` | `{persona?: "maya"}` | `Me`. Creates a demo account with sample cards, history and an active plan. The story starts on a payday. |
+| `POST /api/demo/start` | `{persona?: "aziz"}` | `Me`. Creates a demo account with sample cards, history and an active plan. The story starts on a payday. |
 | `POST /api/demo/clock` | `{action: "next_payday"\|"next_statement"\|"plus_day"\|"reset"}` | `{me: Me, jumped_to: date, note: string}` |
 | `GET /api/inbox` | – | `{messages: [{id, channel: "sms"\|"email", to, subject, body, link, sent_at}]}` newest first. Demo and dev only: what would have been sent. |
 
