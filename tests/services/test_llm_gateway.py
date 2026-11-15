@@ -340,8 +340,11 @@ async def test_config_switches_provider_and_model_at_run_time(stack):
     assert bad.status_code == 422 and bad.json()["error"]["code"] == "invalid_input"
 
 
-def test_resolve_picks_the_live_provider_only_with_a_key_outside_tests():
+def test_resolve_picks_the_live_provider_only_with_a_key_outside_tests(monkeypatch):
     from burnrate.services.llm_gateway import resolve
+
+    # CI exports BR_LLM_PROVIDER=fake for the whole job; this test is about the built-in default.
+    monkeypatch.delenv("BR_LLM_PROVIDER", raising=False)
 
     dev = {"env": "dev", "_env_file": None}
     keyed = Settings(openai_api_key="sk-x", anthropic_api_key="sk-ant-x", **dev)
