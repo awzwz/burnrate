@@ -1,15 +1,15 @@
 # What belongs to ONE deployment of the application: public hostname, image tags, configuration hash.
-# REWRITTEN by deploy/scripts/deploy.sh on every run; the values below are the defaults of the small profile
-# and keep `kubectl kustomize deploy/apps` working on a fresh checkout. Included by ../small and ../full.
+# REWRITTEN by deploy/scripts/deploy.sh on every run (this version: 2026-11-15T07:46:16Z, profile small).
+# Included by ../small and ../full.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 images:
   - name: registry.digitalocean.com/burnrate/api
     newName: registry.digitalocean.com/burnrate/api
-    newTag: latest
+    newTag: "c48c715-dirty-20261115T071823"
   - name: registry.digitalocean.com/burnrate/web
     newName: registry.digitalocean.com/burnrate/web
-    newTag: latest
+    newTag: "c48c715-dirty-20261115T071823"
 patches:
   - target:
       kind: HTTPRoute
@@ -25,7 +25,7 @@ patches:
       - op: replace
         path: /data/BR_PUBLIC_URL
         value: https://burnrate.67.207.94.96.sslip.io
-  # a new hash rolls every Deployment, so a changed ConfigMap reaches the pods
+  # a new hash rolls every Deployment, so a changed ConfigMap or Secret reaches the pods
   - target:
       kind: Deployment
     patch: |-
@@ -37,4 +37,4 @@ patches:
         template:
           metadata:
             annotations:
-              burnrate.io/config-hash: none
+              burnrate.io/config-hash: "101238834fb40bac"

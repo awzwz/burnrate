@@ -30,18 +30,3 @@ spec:
   podMetricsEndpoints:
     - port: metrics
       interval: 30s
----
-# Envoy proxies of the public Gateway: what the outside world actually got (envoy_http_downstream_rq_xx, ...)
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: envoy-gateway-proxies
-  namespace: envoy-gateway-system
-spec:
-  selector:
-    matchLabels:
-      gateway.envoyproxy.io/owning-gateway-name: burnrate
-  podMetricsEndpoints:
-    - port: metrics
-      path: /stats/prometheus
-      interval: 30s

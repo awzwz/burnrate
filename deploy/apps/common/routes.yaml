@@ -1,4 +1,4 @@
-# Public routing: Gateway "burnrate" (namespace edge, Envoy Gateway) -> the three public Services.
+# Public routing: Gateway "burnrate" (namespace edge; Cilium in profile small, Envoy Gateway in full) -> the three public Services.
 #
 #   /api/...      edge-api:8000     the only public API
 #   /hooks/...    webhooks:8000     Stripe and SMS webhooks
@@ -12,7 +12,7 @@
 # load balancer IP. deploy.sh writes the hostname into deploy/apps/env on every run.
 #
 # Three independent locks keep /internal and /metrics private:
-#   1. the first rule below (answer 404 at the gateway);
+#   1. the first rule below (these paths go to nginx in the web pod, which answers 404, never to the API);
 #   2. NetworkPolicy gateway-to-public-pods: the gateway reaches ONLY edge-api, webhooks and web, so a wrong
 #      route to e.g. engine fails to connect;
 #   3. internal routers need the x-internal-token header, and the gateway removes that header from every
@@ -23,18 +23,6 @@
 #   curl -s -o /dev/null -w '%{http_code}\n' --path-as-is https://$HOST/api/../internal/engine/rules  # 404
 #
 # Every rule sets timeouts.request explicitly; nothing relies on a proxy default.
-apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: HTTPRouteFilter
-metadata:
-  name: not-found
-spec:
-  directResponse:
-    statusCode: 404
-    contentType: application/json
-    body:
-      type: Inline
-      inline: '{"error":{"code":"not_found","message":"No such endpoint."}}'
----
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -55,12 +43,10 @@ spec:
         - path: {type: PathPrefix, value: /metrics}
         - path: {type: PathPrefix, value: /readyz}
         - path: {type: PathPrefix, value: /admin/api}
-      filters:
-        - type: ExtensionRef
-          extensionRef:
-            group: gateway.envoyproxy.io
-            kind: HTTPRouteFilter
-            name: not-found
+      # never forwarded to the API: nginx in the web pod answers these paths with 404
+      backendRefs:
+        - name: web
+          port: 8080
 
     # 2. the rehearsal chat: POST /api/rehearsal/{id}/turn answers with server-sent events until the model has
     #    finished speaking. Envoy streams responses without buffering; the request only needs time.

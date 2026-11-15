@@ -1,0 +1,13 @@
+[Unit]
+Description=Caddy
+After=network-online.target
+Wants=network-online.target
+[Service]
+Environment=XDG_DATA_HOME=/var/lib/caddy
+Environment=XDG_CONFIG_HOME=/var/lib/caddy
+ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile
+Restart=always
+LimitNOFILE=1048576
+[Install]
+WantedBy=multi-user.target

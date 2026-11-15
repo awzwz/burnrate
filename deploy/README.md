@@ -56,7 +56,8 @@ Versions are pinned in `deploy/versions.env`. "seruen" = ran on the previous clu
 | component | namespace | version | source | profile |
 |---|---|---|---|---|
 | Kubernetes | | newest 1.35.x offered (1.35.10-do.0) | seruen ran 1.35.9 | both |
-| Envoy Gateway + Gateway `edge/burnrate` | envoy-gateway-system, edge | chart 1.9.3 (Gateway API v1.6.1, supports Kubernetes 1.33-1.36) | new | both |
+| Gateway `edge/burnrate` on Cilium's GatewayClass `cilium` (ships with DOKS) | edge | Cilium 1.19.10, Gateway API v1.2.1 CRDs managed by DigitalOcean | ran on 2026-11-15 | small |
+| Envoy Gateway + Gateway `edge/burnrate` | envoy-gateway-system, edge | chart 1.9.3 (Gateway API v1.6.1, supports Kubernetes 1.33-1.36) | new | full |
 | metrics-server | kube-system | chart 3.14.0 (0.9.0) | seruen | both |
 | Strimzi + Kafka `burnrate` | platform, data | 1.3.0, Kafka 4.3.1 | seruen | both |
 | CloudNativePG + cluster `pg` | platform, data | chart 0.29.1 (operator 1.30.1), image `postgresql:17.12-standard-trixie` | seruen (image: new) | both |
@@ -120,6 +121,15 @@ its output is static files, and only the final nginx stage is amd64. Checked on 
 report `Architecture: amd64` and start.
 
 ## The edge server
+
+**As deployed on 2026-11-15:** the Caddyfile in use is `deploy/edge/Caddyfile`. It moves traffic to the cluster without
+signing anyone out: a browser that already had a session on the single-process server (cookie `br_session` and no
+`br_backend` marker) stays on `127.0.0.1:8000` on the droplet; every other browser goes to the cluster and gets the
+marker cookie `br_backend=k8s`. Private paths (`/internal`, `/metrics`, `/readyz`, `/admin/api`) are answered 404 by
+Caddy itself. `deploy/edge/burnrate.service` and `caddy.service` are the systemd units on the droplet; the
+single-process server reads `/etc/burnrate.env` (not in the repository). Once no old sessions are left, drop the
+`@legacy` block and stop `burnrate.service`.
+
 
 The jury has `https://burnrate.67.207.94.96.sslip.io`. That name points at the droplet `burnrate-app`
 (67.207.94.96, nyc1), where Caddy holds the Let's Encrypt certificate. The cluster sits behind it:
@@ -386,7 +396,11 @@ Verified on a laptop, 2026-11-15 (no cluster, no cloud call, no image pushed):
 
 Not verified, because it needs the cluster:
 
-1. **Envoy Gateway 1.9.3 on DOKS.** New here. Whether the Gateway API CRDs that DOKS preinstalls are new
+1. **Envoy Gateway 1.9.3 on DOKS (profile full).** Tried on 2026-11-15 and failed: DOKS 1.35 preinstalls the Gateway API
+   CRDs v1.2.1, managed by DigitalOcean's controller, and Helm's CRD install conflicts with them. Profile small
+   therefore uses Cilium's own Gateway controller (class `cilium`), which runs and is verified. The note below is the
+   original concern, kept for profile full.
+   New here. Whether the Gateway API CRDs that DOKS preinstalls are new
    enough for it (it is built for v1.6.1; Helm will not replace existing CRDs), and whether DOKS also runs
    Cilium's own Gateway controller. A second controller should not interfere (different GatewayClass);
    `bootstrap.sh gateway` prints the CRD version and the GatewayClasses it finds before installing.

@@ -1,0 +1,13 @@
+[Unit]
+Description=Burn Rate (all services in one process)
+After=network-online.target
+Wants=network-online.target
+[Service]
+WorkingDirectory=/opt/burnrate
+EnvironmentFile=/etc/burnrate.env
+ExecStart=/opt/burnrate/.venv/bin/python -m burnrate.run
+Restart=always
+RestartSec=2
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target

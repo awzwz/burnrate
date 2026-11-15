@@ -1,38 +1,28 @@
-# The entry of the cluster, profile "small" (Gateway API, implemented by Envoy Gateway).
+# The entry of the cluster, profile "small" (Gateway API, implemented by Cilium, which DOKS ships).
 #
 #   browser --HTTPS--> Caddy on droplet burnrate-app (67.207.94.96, certificate for burnrate.67.207.94.96.sslip.io)
-#           --HTTP, Host header unchanged--> DigitalOcean Load Balancer "burnrate-lb" :80 --> Envoy proxies --> HTTPRoute
+#           --HTTP, Host header unchanged--> DigitalOcean Load Balancer :80 --> Cilium's Envoy --> HTTPRoute
+#
+# Why Cilium and not Envoy Gateway here: DOKS 1.35 preinstalls the Gateway API CRDs (v1.2.1, managed by
+# DigitalOcean's own controller) and runs Cilium 1.19 with its Gateway API controller and GatewayClass "cilium".
+# Installing Envoy Gateway means replacing CRDs that DigitalOcean reconciles; using the class that is already
+# there does not. Cilium's data plane is Envoy as well. Profile "full" keeps Envoy Gateway (gateway-full.yaml).
 #
 # TLS ends at Caddy, outside the cluster. So this Gateway has ONE listener, plain HTTP on port 80, and there is
 # NO redirect to HTTPS here: Caddy already redirects browsers, and a redirect on this side would send Caddy's
 # own requests in a circle. No certificate, no cert-manager in this profile.
 # The listener accepts any Host; the application's HTTPRoute (deploy/apps/common/routes.yaml) answers only
-# for burnrate.67.207.94.96.sslip.io, every other name gets a 404 from Envoy.
+# for burnrate.67.207.94.96.sslip.io, every other name gets a 404.
 #
 # Know what this means: the hop Caddy -> load balancer is NOT encrypted, and the load balancer's port 80 is
-# reachable by anyone who learns its address (see "Known limits" in deploy/README.md and the allow rule in
-# proxy-small.yaml).
-#
-# The Envoy proxies themselves (replicas, resources, load balancer): proxy-small.yaml.
-apiVersion: gateway.networking.k8s.io/v1
-kind: GatewayClass
-metadata:
-  name: envoy
-spec:
-  controllerName: gateway.envoyproxy.io/gatewayclass-controller
-  parametersRef:
-    group: gateway.envoyproxy.io
-    kind: EnvoyProxy
-    name: burnrate
-    namespace: envoy-gateway-system
----
+# reachable by anyone who learns its address (see "Known limits" in deploy/README.md).
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: burnrate
   namespace: edge
 spec:
-  gatewayClassName: envoy
+  gatewayClassName: cilium
   listeners:
     - name: http
       protocol: HTTP

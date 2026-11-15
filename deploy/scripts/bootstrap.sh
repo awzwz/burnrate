@@ -102,10 +102,17 @@ edge_hint() {
 }
 
 step_gateway() {
-  log "Envoy Gateway $V_ENVOY_GATEWAY + Gateway edge/burnrate (profile $PROFILE)"
-  dry || gateway_preflight
-  helm_up eg envoy-gateway-system oci://docker.io/envoyproxy/gateway-helm "$V_ENVOY_GATEWAY" "$P/envoy-gateway/values.yaml"
-  kapply -f "$P/envoy-gateway/proxy-$PROFILE.yaml" -f "$P/envoy-gateway/gateway-$PROFILE.yaml"
+  if [[ "$PROFILE" == "small" ]]; then
+    # DOKS ships the Gateway API CRDs (managed by DigitalOcean) and Cilium's Gateway controller: use them.
+    log "Gateway edge/burnrate on Cilium's GatewayClass (profile small)"
+    dry || kubectl get gatewayclass cilium >/dev/null 2>&1 || die "GatewayClass cilium not found: is this DOKS with Cilium's Gateway API on?"
+    kapply -f "$P/envoy-gateway/gateway-small.yaml"
+  else
+    log "Envoy Gateway $V_ENVOY_GATEWAY + Gateway edge/burnrate (profile $PROFILE)"
+    dry || gateway_preflight
+    helm_up eg envoy-gateway-system oci://docker.io/envoyproxy/gateway-helm "$V_ENVOY_GATEWAY" "$P/envoy-gateway/values.yaml"
+    kapply -f "$P/envoy-gateway/proxy-$PROFILE.yaml" -f "$P/envoy-gateway/gateway-$PROFILE.yaml"
+  fi
   if dry; then info "[dry-run] wait for the load balancer IP of Gateway edge/burnrate"; return 0; fi
   info "waiting for the DigitalOcean load balancer (2-4 minutes)..."
   local ip=""
@@ -212,6 +219,7 @@ step_observability() {
     kapply -f "$P/linkerd/podmonitor.yaml" -f "$P/kube-prometheus-stack/monitors-full.yaml"
   fi
   kapply -f "$P/kube-prometheus-stack/monitors.yaml"
+  [[ "$PROFILE" == "full" ]] && kapply -f "$P/kube-prometheus-stack/monitors-envoy-gateway.yaml"
   kapply -k "$P/grafana-dashboards"
   info "Grafana: kubectl -n observability port-forward svc/kps-grafana 3000:80   (admin / deploy/secrets/grafana.env)"
 }
