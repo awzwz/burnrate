@@ -23,8 +23,8 @@ class Settings(BaseSettings):
     redis_url: str = ""  # e.g. redis://valkey.data:6379/0
 
     # --- security ---
-    jwt_secret: str = "dev-secret-change-me"
-    internal_token: str = "dev-internal-token"
+    jwt_secret: str = "dev-secret-change-me-before-any-real-use-0000"
+    internal_token: str = "dev-internal-token-change-me"
     cookie_secure: bool = False
     admin_token: str = "dev-admin-token"
 

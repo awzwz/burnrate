@@ -15,9 +15,10 @@ COOKIE = "br_session"
 SESSION_DAYS = 30
 
 
-def make_session_token(user_id: str, *, demo: bool = False, sid: str | None = None) -> str:
+def make_session_token(user_id: str, *, demo: bool = False, sid: str | None = None, off: int = 0, tz: str = "") -> str:
+    """`off` is the demo clock offset in seconds; it lives in the cookie so no lookup is needed per request."""
     now = dt.datetime.now(dt.UTC)
-    claims = {"sub": user_id, "demo": demo, "sid": sid or secrets.token_hex(8),
+    claims = {"sub": user_id, "demo": demo, "off": int(off), "tz": tz, "sid": sid or secrets.token_hex(8),
               "iat": int(now.timestamp()), "exp": int((now + dt.timedelta(days=SESSION_DAYS)).timestamp())}
     return jwt.encode(claims, settings().jwt_secret, algorithm="HS256")
 

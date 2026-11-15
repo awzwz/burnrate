@@ -62,6 +62,25 @@ async def call(service: str, method: str, path: str, *, json: Any = None, params
     raise Unavailable(f"{service} is not reachable: {last}", code=f"{service}_unavailable")
 
 
+async def stream_lines(service: str, method: str, path: str, *, json: Any = None, timeout: float = 120.0):
+    """Yield the lines of a streamed internal response (NDJSON). Errors before the first byte raise DomainError."""
+    headers = {**get_ctx().headers(), "x-internal-token": settings().internal_token}
+    async with _client(service).stream(method, path, json=json, headers=headers, timeout=timeout) as r:
+        if r.status_code >= 400:
+            body = await r.aread()
+            try:
+                import json as _json
+
+                err = _json.loads(body).get("error", {})
+            except Exception:  # noqa: BLE001
+                err = {}
+            raise DomainError(err.get("message") or f"{service} answered {r.status_code}",
+                              code=err.get("code") or "upstream_error", status=r.status_code)
+        async for line in r.aiter_lines():
+            if line.strip():
+                yield line
+
+
 async def get(service: str, path: str, **kw) -> Any:
     return await call(service, "GET", path, **kw)
 
