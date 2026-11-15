@@ -71,7 +71,7 @@ def _clean(fields: dict) -> dict:
                 continue
         else:
             try:
-                out[k] = int(round(float(v)))
+                out[k] = round(float(v))
             except (TypeError, ValueError):
                 continue
     return out
@@ -379,8 +379,9 @@ async def demo_generate(req: DemoReq):
         f"Statement Closing Date: {close.isoformat()}",
         f"Days in Billing Cycle: {days}",
         "INTEREST CHARGE CALCULATION",
-        f"Purchases  Annual Percentage Rate (APR): {card['apr_bps'] / 100:.2f}% (v)  "
-        f"Balance Subject to Interest Rate: {_money(cyc['balance_subject_to_interest_cents'])}  Interest Charge: {_money(cyc['interest_cents'])}",
+        (f"Purchases  Annual Percentage Rate (APR): {card['apr_bps'] / 100:.2f}% (v)  "
+         f"Balance Subject to Interest Rate: {_money(cyc['balance_subject_to_interest_cents'])}  "
+         f"Interest Charge: {_money(cyc['interest_cents'])}"),
     ])
     return await upload(UploadReq(card_id=req.card_id, filename=f"{card['name']} {close.isoformat()}.txt", mime="text/plain", text=text, source="demo"))
 

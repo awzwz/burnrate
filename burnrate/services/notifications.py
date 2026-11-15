@@ -160,7 +160,7 @@ async def _deliver(channel: str, to: str, subject: str, body: str, link: str, de
                     smtp.login(u.username, u.password or "")
                 smtp.send_message(msg)
             return "sent", "smtp"
-    except Exception:  # noqa: BLE001
+    except Exception:
         log.exception("delivery failed channel=%s provider=%s", channel, provider)
         return "failed", provider
     return "captured", "inbox"

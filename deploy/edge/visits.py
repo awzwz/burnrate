@@ -41,7 +41,7 @@ ACTIONS = [
     (re.compile(r"^GET /api/(cards|asks|statements)"), "browsed app"),
 ]
 STATIC = re.compile(r"^/(assets/|favicon|robots\.txt|api/health|healthz)")
-BOT = re.compile(r"bot|crawl|spider|preview|headless|python|curl|wget|httpx|go-http|node-fetch|okhttp|scan", re.I)
+BOT = re.compile(r"bot|crawl|spider|preview|headless|python|curl|wget|httpx|go-http|node-fetch|okhttp|scan", re.IGNORECASE)
 
 
 def browser(ua: str) -> str:
@@ -114,7 +114,8 @@ class Visitor:
 def load_ignore(extra):
     ips = set(extra)
     if os.path.exists(IGNORE_FILE):
-        ips |= {x.strip() for x in open(IGNORE_FILE) if x.strip() and not x.startswith("#")}
+        with open(IGNORE_FILE) as f:
+            ips |= {x.strip() for x in f if x.strip() and not x.startswith("#")}
     return ips
 
 
@@ -140,17 +141,18 @@ def follow(ignore):
     seen = set(ignore)
     for e in entries(sorted(glob.glob(LOG + "*"), key=os.path.getmtime)):
         seen.add(parse(e)[0])
-    f = open(LOG, encoding="utf-8", errors="replace")
+    f = open(LOG, encoding="utf-8", errors="replace")  # noqa: SIM115 - kept open to follow the file
     f.seek(0, os.SEEK_END)
     while True:
         line = f.readline()
         if not line:
             time.sleep(1)
             if os.path.getsize(LOG) < f.tell():  # rolled
-                f = open(LOG, encoding="utf-8", errors="replace")
+                f.close()
+                f = open(LOG, encoding="utf-8", errors="replace")  # noqa: SIM115 - reopened after a roll
             continue
         try:
-            ip, ts, method, uri, status, ua, ref = parse(json.loads(line))
+            ip, ts, method, uri, _status, ua, ref = parse(json.loads(line))
         except ValueError:
             continue
         if ip in seen or STATIC.match(uri):

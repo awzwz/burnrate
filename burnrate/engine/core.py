@@ -19,7 +19,7 @@ DAYS_IN_YEAR = 365
 
 # ---------- rounding and formatting ----------
 
-def round_cents(x: Fraction | int | float | Decimal) -> int:
+def round_cents(x: Fraction | float | Decimal) -> int:
     """Half-up to a whole cent."""
     f = Fraction(x)
     return int((Decimal(f.numerator) / Decimal(f.denominator)).quantize(Decimal(1), rounding=ROUND_HALF_UP))

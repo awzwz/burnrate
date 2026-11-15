@@ -6,9 +6,23 @@ from fractions import Fraction
 import pytest
 
 from burnrate.engine.checks import StatementFields, needs_confirmation, reconcile, statement_checks
-from burnrate.engine.core import (ISSUER_RULES, Card, Txn, apply_payment, burn_per_day, ceil_dollar, current_min_cents,
-                                  last_on_or_before, min_payment_cents, next_on_or_after, round_cents, run_cycle,
-                                  saving_from_paying_early, total_burn_per_day, usd)
+from burnrate.engine.core import (
+    ISSUER_RULES,
+    Card,
+    Txn,
+    apply_payment,
+    burn_per_day,
+    ceil_dollar,
+    current_min_cents,
+    last_on_or_before,
+    min_payment_cents,
+    next_on_or_after,
+    round_cents,
+    run_cycle,
+    saving_from_paying_early,
+    total_burn_per_day,
+    usd,
+)
 from burnrate.engine.plan import PaySchedule, payday_instruction, paydays, statement_window
 from burnrate.engine.refinance import balance_transfer, consolidation_loan
 from burnrate.engine.simulate import amortize, compare, payment_for_term, project, yearly_value_of_rate_cut
@@ -226,8 +240,8 @@ def test_strategy_ordering_holds():
     assert (r["avalanche"].months, r["snowball"].months) == (22, 23)
     assert r["avalanche"].interest_cents <= r["snowball"].interest_cents <= r["minimums"].interest_cents
     assert r["avalanche"].interest_cents == 267_083
-    assert [c for c, _ in r["avalanche"].payoff_order][0] == "cap"
-    assert [c for c, _ in r["snowball"].payoff_order][0] == "disc"
+    assert next(c for c, _ in r["avalanche"].payoff_order) == "cap"
+    assert next(c for c, _ in r["snowball"].payoff_order) == "disc"
 
 
 def test_a_bigger_budget_never_takes_longer_or_costs_more():

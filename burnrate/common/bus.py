@@ -12,8 +12,8 @@ import asyncio
 import datetime as dt
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -131,7 +131,7 @@ async def drain(max_rounds: int = 100) -> int:
                     await dispatch(ev)
                     await _mark(service, ev.id, True)
                     delivered += 1
-                except Exception:  # noqa: BLE001 - a failing handler must not stop the relay
+                except Exception:  # a failing handler must not stop the relay
                     log.exception("handler failed topic=%s id=%s", ev.topic, ev.id)
                     await _mark(service, ev.id, False)
     return delivered
@@ -141,7 +141,7 @@ async def local_relay_loop(interval: float = 0.2) -> None:
     while True:
         try:
             await drain()
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("relay loop error")
         await asyncio.sleep(interval)
 
@@ -162,7 +162,7 @@ async def kafka_relay_loop(service: str, interval: float = 0.3) -> None:
                                        "created_at": ev.created_at.isoformat() if ev.created_at else None}).encode()
                     await producer.send_and_wait(ev.topic, body, key=(ev.key or ev.id).encode())
                     await _mark(service, ev.id, True)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 log.exception("kafka relay error service=%s", service)
             await asyncio.sleep(interval)
     finally:
@@ -190,7 +190,7 @@ async def kafka_consume_loop(worker: str) -> None:
                 try:
                     await dispatch(ev, worker)
                     break
-                except Exception:  # noqa: BLE001
+                except Exception:
                     log.exception("handler failed worker=%s topic=%s id=%s attempt=%s", worker, ev.topic, ev.id, attempt)
                     await asyncio.sleep(min(30, 0.5 * 2 ** attempt))
             await consumer.commit()

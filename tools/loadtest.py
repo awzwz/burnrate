@@ -70,7 +70,7 @@ async def main() -> None:
         print("no successful requests", errors)
         return
     out.sort()
-    q = lambda p: out[min(len(out) - 1, int(len(out) * p))] * 1000  # noqa: E731
+    q = lambda p: out[min(len(out) - 1, int(len(out) * p))] * 1000
     total_err = sum(errors.values())
     print(f"mix={a.mix} users={a.users} seconds={took:.1f}")
     print(f"requests ok={len(out)} errors={total_err} ({100 * total_err / (len(out) + total_err):.2f}%) {errors if errors else ''}")

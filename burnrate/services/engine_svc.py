@@ -7,7 +7,17 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from burnrate.engine import checks as chk
-from burnrate.engine.core import ENGINE_VERSION, ISSUER_RULES, Txn, burn_per_day, round_cents, rule_for, run_cycle, total_burn_per_day, usd
+from burnrate.engine.core import (
+    ENGINE_VERSION,
+    ISSUER_RULES,
+    Txn,
+    burn_per_day,
+    round_cents,
+    rule_for,
+    run_cycle,
+    total_burn_per_day,
+    usd,
+)
 from burnrate.engine.io import CardIn, ScheduleIn, card_view, instruction_view, projection_view, rate
 from burnrate.engine.plan import payday_instruction, paydays, paydays_per_year
 from burnrate.engine.refinance import balance_transfer, consolidation_loan

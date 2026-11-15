@@ -315,5 +315,5 @@ async def test_analytics_events_are_stored_and_demo_traffic_is_kept_apart(stack)
     await s.drain()
     real = (await s.internal("GET", "/internal/analytics/funnel")).json()
     with_demo = (await s.internal("GET", "/internal/analytics/funnel", params={"include_demo": True})).json()
-    step = lambda d, n: next(x["users"] for x in d["steps"] if x["name"] == n)  # noqa: E731
+    step = lambda d, n: next(x["users"] for x in d["steps"] if x["name"] == n)
     assert step(real, "quiz_start") == 1 and step(with_demo, "quiz_start") == 2 and step(real, "result_view") == 1

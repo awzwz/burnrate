@@ -8,8 +8,8 @@ from __future__ import annotations
 import datetime as dt
 import os
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from sqlalchemy import JSON, DateTime, MetaData, String, TypeDecorator, event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -52,7 +52,7 @@ def make_base(service: str) -> type[DeclarativeBase]:
 
     class Base(DeclarativeBase):
         metadata = MetaData()
-        type_annotation_map = {dict: JSON, list: JSON, dt.datetime: UTCDateTime}
+        type_annotation_map = {dict: JSON, list: JSON, dt.datetime: UTCDateTime}  # noqa: RUF012 - read by SQLAlchemy
 
     class Outbox(Base):
         __tablename__ = "outbox"
@@ -103,7 +103,7 @@ def engine(service: str) -> AsyncEngine:
             eng = create_async_engine(url, connect_args={"timeout": 15})
 
             @event.listens_for(eng.sync_engine, "connect")
-            def _pragmas(dbapi_conn, _):  # noqa: ANN001
+            def _pragmas(dbapi_conn, _):
                 cur = dbapi_conn.cursor()
                 cur.execute("PRAGMA journal_mode=WAL")
                 cur.execute("PRAGMA foreign_keys=ON")

@@ -133,7 +133,7 @@ async def tick_loop(interval: float = 5.0) -> None:
             n = await _fire_due(None, real_now())
             if n:
                 log.info("fired %s timers", n)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.exception("tick failed")
         await asyncio.sleep(interval)
 

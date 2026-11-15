@@ -92,7 +92,7 @@ def make_app(names: list[str] | None = None, *, service_label: str | None = None
                 try:
                     await db.create_all(svc)
                     break
-                except Exception:  # noqa: BLE001
+                except Exception:
                     if attempt == 4:
                         raise
                     await asyncio.sleep(0.5 * (attempt + 1))
@@ -105,8 +105,7 @@ def make_app(names: list[str] | None = None, *, service_label: str | None = None
                 tasks.append(asyncio.create_task(bus.kafka_relay_loop(svc)))
         for m in mods:
             if hasattr(m, "startup"):
-                for t in (await m.startup(app)) or []:
-                    tasks.append(t)
+                tasks.extend((await m.startup(app)) or [])
         try:
             yield
         finally:

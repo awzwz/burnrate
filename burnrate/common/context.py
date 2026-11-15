@@ -32,7 +32,7 @@ class Ctx:
         }
 
     @classmethod
-    def from_headers(cls, h) -> "Ctx":
+    def from_headers(cls, h) -> Ctx:
         def geti(name: str) -> int:
             try:
                 return int(h.get(name) or 0)
@@ -48,7 +48,7 @@ class Ctx:
         )
 
 
-_ctx: ContextVar[Ctx] = ContextVar("burnrate_ctx", default=Ctx())
+_ctx: ContextVar[Ctx] = ContextVar("burnrate_ctx", default=Ctx())  # noqa: B039 - Ctx is a frozen dataclass
 
 
 def get_ctx() -> Ctx:

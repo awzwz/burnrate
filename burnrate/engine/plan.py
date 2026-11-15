@@ -14,8 +14,17 @@ import datetime as dt
 from dataclasses import dataclass, field
 from fractions import Fraction
 
-from burnrate.engine.core import (Card, apply_payment, clamp_day, current_min_cents, daily_rate, last_on_or_before,
-                                  next_on_or_after, saving_from_paying_early, total_burn_per_day)
+from burnrate.engine.core import (
+    Card,
+    apply_payment,
+    clamp_day,
+    current_min_cents,
+    daily_rate,
+    last_on_or_before,
+    next_on_or_after,
+    saving_from_paying_early,
+    total_burn_per_day,
+)
 
 FREQUENCIES = ("weekly", "biweekly", "semimonthly", "monthly")
 
@@ -38,7 +47,7 @@ def paydays(schedule: PaySchedule, start: dt.date, count: int) -> list[dt.date]:
     if schedule.frequency in ("weekly", "biweekly"):
         step = 7 if schedule.frequency == "weekly" else 14
         delta = (start - schedule.anchor).days
-        k = -(-delta // step) if delta > 0 else -((-delta) // step)
+        k = -(-delta // step)  # ceiling division: the first payday on or after start
         d = schedule.anchor + dt.timedelta(days=k * step)
         while len(out) < count:
             out.append(d)
@@ -219,10 +228,9 @@ def payday_instruction(cards: list[Card], schedule: PaySchedule, payday: dt.date
         remaining -= amount
         if i == 0 and covers:
             reserves.append(Reserve(c.id, c_min, due, "covered_by_payment"))
-        if i == 0 and strategy != "finish_small":
-            # One card per payday unless the target is paid off and money is left over.
-            if state[c.id].total_cents > 0:
-                break
+        # One card per payday unless the target is paid off and money is left over.
+        if i == 0 and strategy != "finish_small" and state[c.id].total_cents > 0:
+            break
 
     if not sends and short_by:
         strategy, reason = "minimums_only", "This paycheck covers minimums only. Nothing is late; the extra waits for the next one."
