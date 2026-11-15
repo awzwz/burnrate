@@ -1,0 +1,97 @@
+# Manual: builds both images for linux/amd64 and pushes them to the DigitalOcean Container Registry.
+# Actions -> "Release images" -> Run workflow. It does not deploy: afterwards, on a machine with access to
+# the cluster, run   deploy/scripts/deploy.sh --tag <the tag this run printed>
+#
+# Repository settings needed:
+#   secret   DIGITALOCEAN_ACCESS_TOKEN   a DigitalOcean API token that may write to the registry
+#   variable REGISTRY_NAME               optional, the registry name (default: burnrate)
+name: Release images
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (default: the short commit id)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  push:
+    name: Build and push api and web
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: registry.digitalocean.com/${{ vars.REGISTRY_NAME || 'burnrate' }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          tag=${INPUT_TAG:-$(git rev-parse --short HEAD)}
+          if ! printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$'; then
+            echo "not a valid image tag: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4.4.1
+
+      # The registry takes the API token as both user name and password.
+      - uses: docker/login-action@v4.8.0
+        with:
+          registry: registry.digitalocean.com
+          username: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          password: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Build and push api
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/api:${{ steps.tag.outputs.tag }}
+            ${{ env.REGISTRY }}/api:latest
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build and push web
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          file: web/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/web:${{ steps.tag.outputs.tag }}
+            ${{ env.REGISTRY }}/web:latest
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+      - name: Summary
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          {
+            echo "Pushed \`$REGISTRY/api:$TAG\` and \`$REGISTRY/web:$TAG\` (also \`:latest\`)."
+            echo
+            echo "Deploy from a machine with access to the cluster:"
+            echo
+            echo "    deploy/scripts/deploy.sh --tag $TAG"
+          } >> "$GITHUB_STEP_SUMMARY"

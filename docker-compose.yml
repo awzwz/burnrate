@@ -1,0 +1,133 @@
+# Local development of the cluster-mode wiring: the same stores the cluster has, and the API image.
+#
+#   docker compose up --build          # or: make compose-up
+#   curl localhost:8000/healthz        # {"ok":true,"service":"all"}
+#   docker compose down -v             # stop and delete the volumes
+#
+#   postgres   PostgreSQL 17 with one database per service (deploy/compose/initdb.sh), like deploy/platform/cnpg
+#   kafka      Apache Kafka 4.3.1, one node, KRaft, topics created on first use, like the `small` profile
+#   valkey     Valkey 8.1
+#   api        the image from ./Dockerfile, started ONCE with BR_MODE=local: every service, event handler and
+#              loop in one process on http://localhost:8000
+#
+# What the api container exercises: the image itself, PostgreSQL through BR_DATABASE_URL with {service}
+# (the form the cluster uses) and rate limits in Valkey. In local mode events are delivered in-process, so
+# Kafka is NOT used by it; the broker is here for running a single service or worker the way the cluster does:
+#
+#   docker compose run --rm -e BR_MODE=cluster -e SERVICE=schema api          # create the tables
+#   docker compose run --rm -e BR_MODE=cluster -e SERVICE=notifier api        # one worker, consuming from Kafka
+#   docker compose run --rm -e BR_MODE=cluster -e SERVICE=cards -p 8001:8000 api
+#
+# Ports are bound to 127.0.0.1 only. The passwords below are for this local stack and nothing else.
+# The front end is not in this file: `cd web && npm run dev` (Vite proxies /api to localhost:8000).
+# Language model: BR_LLM_PROVIDER defaults to "fake" here so nothing is spent; to use a real one
+#   BR_LLM_PROVIDER=openai BR_OPENAI_API_KEY=sk-... docker compose up
+
+name: burnrate
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: burnrate
+      POSTGRES_PASSWORD: burnrate-local
+      POSTGRES_DB: burnrate
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/compose/initdb.sh:/docker-entrypoint-initdb.d/10-burnrate-databases.sh:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      # over TCP on purpose: while initdb.sh is still creating databases the server listens on its socket only
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U burnrate -d burnrate"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  kafka:
+    image: apache/kafka:4.3.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # kafka:9092 for containers of this file, localhost:9094 for programs on the host
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    ports:
+      - "127.0.0.1:9094:9094"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 15s
+
+  valkey:
+    image: valkey/valkey:8.1.11-alpine
+    command: ["valkey-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "volatile-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: burnrate-api:dev
+    init: false          # the image has its own init (tini)
+    environment:
+      BR_MODE: local
+      BR_ENV: dev
+      BR_PUBLIC_URL: http://localhost:8000
+      BR_DATABASE_URL: postgresql+asyncpg://burnrate:burnrate-local@postgres:5432/{service}
+      BR_KAFKA_BOOTSTRAP: kafka:9092
+      BR_REDIS_URL: redis://valkey:6379/0
+      BR_LLM_PROVIDER: ${BR_LLM_PROVIDER:-fake}
+      BR_OPENAI_API_KEY: ${BR_OPENAI_API_KEY:-}
+      BR_ANTHROPIC_API_KEY: ${BR_ANTHROPIC_API_KEY:-}
+      BR_BILLING_PROVIDER: demo
+      BR_SMS_PROVIDER: inbox
+      BR_EMAIL_PROVIDER: inbox
+      BR_DEMO_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    # the same restrictions as the pods: non-root (from the image), read-only root filesystem, no capabilities
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /data:uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  pgdata:
+  kafkadata:

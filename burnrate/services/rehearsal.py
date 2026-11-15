@@ -17,7 +17,6 @@ import re
 from collections.abc import AsyncIterator
 from typing import Literal
 
-import httpx
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -28,7 +27,7 @@ from burnrate.common import clients
 from burnrate.common.config import settings
 from burnrate.common.context import get_ctx, real_now
 from burnrate.common.db import UTCDateTime, make_base, new_id, session
-from burnrate.common.errors import Conflict, DomainError, NotFound, Unavailable
+from burnrate.common.errors import Conflict, DomainError, NotFound
 from burnrate.common.guardrails import check_text
 
 SVC = "rehearsal"
@@ -263,24 +262,17 @@ async def _local_lines(app, path: str, payload: dict, headers: dict[str, str]) -
 
 
 async def stream_ndjson(service: str, path: str, payload: dict, *, timeout: float = 60.0) -> AsyncIterator[dict]:
-    """POST to another service and yield its NDJSON lines as they arrive, in both modes. An error status becomes the
-    same DomainError `clients.call` would raise."""
-    headers = {**get_ctx().headers(), "x-internal-token": settings().internal_token}
-    if settings().is_local:
-        if clients._local_app is None:  # clients has no streaming call of its own yet
-            raise RuntimeError("local app is not set")
+    """POST to another service and yield its NDJSON lines as they arrive. An error status raises the same
+    DomainError `clients.call` would. In the cluster this is `clients.stream_lines`; in local mode that helper goes
+    through httpx's ASGI transport, which delivers the body only when it is complete, so the in-process app is
+    called directly here to keep the reply streaming."""
+    if settings().is_local and clients._local_app is not None:
+        headers = {**get_ctx().headers(), "x-internal-token": settings().internal_token}
         async for line in _local_lines(clients._local_app, path, payload, headers):
             yield line
         return
-    try:
-        async with clients._client(service).stream("POST", path, json=payload, headers=headers, timeout=timeout) as r:
-            if r.status_code >= 400:
-                raise _remote_error(service, r.status_code, await r.aread())
-            async for raw in r.aiter_lines():
-                if raw.strip():
-                    yield json.loads(raw)
-    except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout, httpx.RemoteProtocolError) as e:
-        raise Unavailable(f"{service} is not reachable: {e}", code=f"{service}_unavailable") from e
+    async for raw in clients.stream_lines(service, "POST", path, json=payload, timeout=timeout):
+        yield json.loads(raw)
 
 
 def gateway_stream(system: str, messages: list[dict]) -> AsyncIterator[dict]:
@@ -322,6 +314,9 @@ async def _rep_reply(system: str, messages: list[dict], *, fallback: str = NEUTR
         else:
             log.warning("gateway failed during practice: %s %s", e.code, e.message)
             reason = e.code
+    except Exception:  # a dropped connection must still end the turn with a `done`, not a broken stream
+        log.exception("gateway stream broke during practice")
+        reason = "gateway_unreachable"
     if paused:
         final = {"text": PAUSED, "provider": provider, "replaced": False, "paused": True, "reason": "llm_budget_exceeded"}
     elif reason == "guard":
@@ -390,7 +385,7 @@ async def turn(session_id: str, req: TurnReq):
     if not text:
         raise DomainError("Type what you would say on the call.", code="empty_message", status=422)
     if len(text) > MAX_CHARS:
-        raise DomainError(f"Keep each message under {MAX_CHARS} characters.", code="message_too_long", status=422)
+        raise DomainError(f"Keep each message to {MAX_CHARS} characters or fewer.", code="message_too_long", status=422)
     async with session(SVC) as s:
         row = await _own(s, session_id)
         if row.finished:

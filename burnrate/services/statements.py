@@ -254,12 +254,20 @@ async def reconcile_statement(statement_id: str) -> None:
     unplanned = max(0, int(f.get("purchases_cents") or 0) - pred["purchases_cents"])
     extra_fees = max(0, int(f.get("fees_cents") or 0) - pred["fees_cents"])
     new_apr = int(f["apr_bps"]) if f.get("apr_bps") else old_apr
+    # A payment on the statement that the ledger never saw is usually autopay taking the minimum on the due date.
+    unseen_paid = max(0, int(f.get("payments_credits_cents") or 0) - pred["payments_cents"])
+    shifts: list[list[int]] = []
+    if unseen_paid:
+        due_in_cycle = last_on_or_before(card["due_day"], close)
+        on_card = (close - due_in_cycle).days + 1 if due_in_cycle >= first else days // 2 + 1
+        shifts.append([unseen_paid, -on_card])
     rec = None
     if actual is not None:
         rec = await clients.post("engine", "/internal/engine/reconcile", json={
             "predicted_interest_cents": pred["interest_cents"], "actual_interest_cents": actual, "apr_bps": new_apr, "days": days,
-            "unplanned_purchases": [[unplanned, days // 2]] if unplanned else [], "rate_change_bps": new_apr - old_apr,
-            "average_balance_cents": pred["balance_subject_to_interest_cents"]})
+            # posted below at close - days // 2, so it sat on the card for days // 2 + 1 days
+            "unplanned_purchases": [[unplanned, days // 2 + 1]] if unplanned else [], "payment_shifts": shifts,
+            "rate_change_bps": new_apr - old_apr, "average_balance_cents": pred["balance_subject_to_interest_cents"]})
 
     # Post what the statement shows that the ledger did not have, then set the balance to the bank's number.
     async def post(kind: str, amount: int, on: dt.date, note: str) -> None:
@@ -294,7 +302,8 @@ async def reconcile_statement(statement_id: str) -> None:
     async with session(SVC) as s:
         r = await s.get(StatementRow, statement_id)
         r.status, r.reconciliation, r.triggers, r.close_date = "reconciled", rec, triggers, close
-        await bus.emit(s, SVC, "statement.reconciled", {"user_id": r.user_id, "card_id": card_id, "statement_id": r.id, "triggers": triggers})
+        await bus.emit(s, SVC, "statement.reconciled", {"user_id": r.user_id, "card_id": card_id, "statement_id": r.id, "triggers": triggers,
+                                                       "close_date": close.isoformat()})
         summary = rec["summary"] if rec else "We updated your balance from the statement."
         await bus.emit(s, SVC, "notify.request", {"template": "statement_ready", "dedupe_key": f"stmt-ready:{r.id}",
                                                   "data": {"card_name": r.card_name, "summary": summary, "statement_id": r.id}})
@@ -347,7 +356,7 @@ async def demo_generate(req: DemoReq):
             minimum = card.get("statement_min_cents") or min_payment_cents(rule_for(card["issuer"]), led["balance_before_cents"], 0)
             txns.append({"date": due_in_cycle.isoformat(), "kind": "payment", "amount_cents": minimum})
     if req.surprise_purchase_cents:
-        txns.append({"date": (first + dt.timedelta(days=11)).isoformat(), "kind": "purchase", "amount_cents": req.surprise_purchase_cents})
+        txns.append({"date": (close - dt.timedelta(days=days // 2)).isoformat(), "kind": "purchase", "amount_cents": req.surprise_purchase_cents})
     cyc = await clients.post("engine", "/internal/engine/cycle", json={
         "start_balance_cents": led["balance_before_cents"], "apr_bps": card["apr_bps"], "first_day": first.isoformat(),
         "last_day": close.isoformat(), "txns": txns})

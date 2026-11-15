@@ -34,6 +34,7 @@ from burnrate.common.llm.base import (
 )
 
 EFFORT = "low"
+TIMEOUT_S = 50.0  # with one retry this stays under the 120 s the statements service waits for an extraction
 EXTRACT_MAX_TOKENS = 2048
 THINKING_HEADROOM = 1024  # max_tokens also covers the model's own reasoning; leave room for it above the reply
 _NO_EFFORT_PREFIXES = ("claude-haiku-4-5", "claude-sonnet-4-5")  # older models reject output_config.effort
@@ -100,7 +101,7 @@ def _text(message) -> str:
 def _refusal(message) -> LLMRefusal:
     details = message.stop_details
     category = getattr(details, "category", None) if details else None
-    return LLMRefusal("The model declined this request." + (f" (category: {category})" if category else ""))
+    return LLMRefusal("The model declined this request." + (f" (category: {category})" if category else ""), usage=_usage(message))
 
 
 @contextmanager
@@ -139,7 +140,7 @@ class AnthropicProvider:
 
     def __init__(self, model: str, api_key: str = "", *, client: anthropic.AsyncAnthropic | None = None):
         self.model = model
-        self.client = client or anthropic.AsyncAnthropic(api_key=api_key, max_retries=1, timeout=90.0)
+        self.client = client or anthropic.AsyncAnthropic(api_key=api_key, max_retries=1, timeout=TIMEOUT_S)
 
     async def extract(self, doc: Document) -> ExtractResult:
         request = build_extract_request(self.model, doc)
@@ -149,11 +150,11 @@ class AnthropicProvider:
         if message.stop_reason == "refusal":
             raise _refusal(message)
         if message.stop_reason == "max_tokens":
-            raise LLMBadOutput("The model ran out of room before finishing the statement fields.")
+            raise LLMBadOutput("The model ran out of room before finishing the statement fields.", usage=usage)
         try:
             raw = json.loads(_text(message))
         except json.JSONDecodeError as e:
-            raise LLMBadOutput("The model did not return valid JSON.") from e
+            raise LLMBadOutput("The model did not return valid JSON.", usage=usage) from e
         return ExtractResult(raw=raw, usage=usage)
 
     async def chat_stream(self, system: str, messages: list[dict], max_tokens: int) -> AsyncIterator[ChatDelta | ChatDone]:

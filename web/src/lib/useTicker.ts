@@ -9,7 +9,9 @@ export function useTicker(burnPerDay: number | null, sinceMs: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (burnPerDay === null) return;
-    const id = window.setInterval(() => setNow(Date.now()), 250);
+    // People who ask for less motion get one calm update a second instead of four.
+    const calm = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const id = window.setInterval(() => setNow(Date.now()), calm ? 1000 : 250);
     return () => window.clearInterval(id);
   }, [burnPerDay]);
   if (burnPerDay === null) return 0;

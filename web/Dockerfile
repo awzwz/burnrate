@@ -25,10 +25,13 @@ RUN npm run build \
 
 # ---- runtime ---------------------------------------------------------------------------------------------------
 FROM ${NGINX_IMAGE} AS runtime
+# the image's own welcome and error pages are not part of the site
+USER root
+RUN rm -f /usr/share/nginx/html/index.html /usr/share/nginx/html/50x.html
 COPY web/nginx.conf /etc/nginx/nginx.conf
 COPY --from=build /web/dist /usr/share/nginx/html
+USER 101:101
 # fail the build, not the pod, on a broken config
 RUN nginx -t -c /etc/nginx/nginx.conf
-USER 101:101
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

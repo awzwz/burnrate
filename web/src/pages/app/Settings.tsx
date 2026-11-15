@@ -48,7 +48,7 @@ function PlanSection({ sub, today, onChange }: { sub: Subscription; today: strin
     <section className="tile" aria-label="Your plan">
       <div className="lab12">Your plan</div>
       <h3 style={{ marginTop: 4 }} data-testid="settings-plan">
-        {sub.plan.name} · {STATUS[sub.status]}
+        {sub.plan.name} · {sub.status === "active" && ending ? "Cancelled, active until the period ends" : STATUS[sub.status]}
       </h3>
       <dl className="kv num" style={{ marginTop: 8 }}>
         <dt>Paid so far</dt>
@@ -371,16 +371,13 @@ export default function Settings() {
         )}
 
         {meter && (
-          <section className="tile" aria-label="Paid versus found">
-            <div className="lab12">Paid vs found</div>
-            <div style={{ marginTop: 8 }}>
-              <MeterBox meter={meter} />
-            </div>
+          <section aria-label="Paid versus found" style={{ margin: "12px 0" }}>
+            <MeterBox meter={meter} />
           </section>
         )}
 
         {prefs.data ? (
-          <Notifications prefs={prefs.data} smsLive={me.config.sms_live} onSaved={prefs.setData} key={`${prefs.data.phone}-${prefs.data.sms_opt_in}-${prefs.data.email_opt_in}`} />
+          <Notifications prefs={prefs.data} smsLive={me.config.sms_live} onSaved={prefs.setData} />
         ) : prefs.loading ? (
           <Loading />
         ) : (

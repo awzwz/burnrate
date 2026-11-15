@@ -599,8 +599,15 @@ export default function AskDetailPage() {
   const requested = params.get("tab");
   const tab: TabId = TABS.some((t) => t.id === requested) ? (requested as TabId) : "why";
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const ready = !!ask;
 
   const go = (next: TabId) => setParams(next === "why" ? {} : { tab: next }, { replace: true });
+
+  // On a phone the tab row scrolls sideways: keep the selected tab in view.
+  useEffect(() => {
+    const el = tabRefs.current[tab];
+    if (ready && el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [tab, ready]);
 
   if (!ask) {
     return (

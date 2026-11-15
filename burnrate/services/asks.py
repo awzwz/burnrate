@@ -7,6 +7,7 @@ fee). Every text here is a template filled by code; no model writes it, and all 
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -229,7 +230,7 @@ def _match_card(cards: list[dict], name) -> dict | None:
         return None
     return (next((c for c in cards if c["id"] == name or c["name"].lower() == wanted), None)
             or next((c for c in cards if wanted in c["name"].lower() or c["name"].lower() in wanted), None)
-            or next((c for c in cards if c["issuer"].replace("_", " ") in wanted), None))
+            or next((c for c in cards if c["issuer"] != "other" and c["issuer"].replace("_", " ") in wanted), None))
 
 
 # ---------- what an ask says on the list ----------
@@ -831,7 +832,9 @@ async def log_outcome(ask_id: str, req: OutcomeReq):
         return await _answer(ask_id, current.id, duplicate=True)
 
     if current is None:
-        card = (await _cards_or_empty()).get(card_id)
+        # If the cards service is away this fails and nothing is stored: better than logging a rate that never
+        # reached the ledger. A card the person has since removed is simply absent, and then there is no effect.
+        card = {c["id"]: c for c in await _cards()}.get(card_id)
         positive = req.result in POSITIVE
         new_apr = req.new_apr_bps if positive else None
         refund = (req.refund_cents or None) if positive else None
@@ -917,7 +920,8 @@ async def on_outcome_logged(ev: bus.Event) -> None:
 # ---------- demo data ----------
 
 class SeedAsk(BaseModel):
-    id: str = Field(min_length=1, max_length=32)
+    id: str | None = Field(default=None, min_length=1, max_length=32)  # used as given; must not belong to another user
+    key: str | None = Field(default=None, min_length=1, max_length=60)  # or a name of the caller's choosing: the id is derived per user
     type: Literal["late_fee_refund", "apr_reduction", "annual_fee", "due_date_move", "hardship"]
     card_id: str
     card_name: str = ""
@@ -936,7 +940,8 @@ class SeedAsk(BaseModel):
 
 class SeedOutcome(BaseModel):
     id: str | None = None
-    ask_id: str
+    ask_id: str | None = None
+    ask_key: str | None = None  # the `key` of an ask seeded for this user, now or earlier
     result: Literal["granted", "partial", "temporary", "refused", "no_answer"]
     channel: Literal["phone", "chat", "message"] = "phone"
     new_apr_bps: int | None = None
@@ -957,10 +962,15 @@ class SeedReq(BaseModel):
     sprint_started_on: dt.date | None = None
 
 
+def _seed_id(user_id: str, key: str) -> str:
+    """Every demo guest gets the same persona, so a seeded row's id is derived from the user and the caller's key."""
+    return hashlib.sha256(f"{user_id}:{key}".encode()).hexdigest()[:32]
+
+
 @router.post("/seed")
 async def seed(req: SeedReq):
     """Ready-made history for the demo persona: rows exactly as given. Nothing is sent to the cards service and no
-    event is written, so the ledger and the playbook are untouched. Rows whose id already exists are left alone."""
+    event is written, so the ledger and the playbook are untouched. Rows that already exist are left alone."""
     uid, on = get_ctx().user_id, today()
     live = await _cards_or_empty()
     added = {"asks": 0, "outcomes": 0}
@@ -968,17 +978,26 @@ async def seed(req: SeedReq):
         position = max([a.position for a in await _rows(s, uid)], default=0)
         by_id: dict[str, AskRow] = {}
         for item in req.asks:
-            existing = await s.get(AskRow, item.id)
+            if not (item.id or item.key):
+                raise DomainError("a seeded ask needs an id or a key", code="invalid_input", status=422)
+            ask_id = item.id or _seed_id(uid, item.key)
+            existing = await s.get(AskRow, ask_id)
             if existing:
-                by_id[item.id] = existing
+                if existing.user_id != uid:
+                    raise Conflict(f"ask id {ask_id} belongs to another user; seed with `key` instead", code="ask_id_taken")
+                by_id[ask_id] = existing
                 continue
             card = {"id": item.card_id, "name": item.card_name, "issuer": item.issuer, **(live.get(item.card_id) or {})}
             card.setdefault("balance_cents", item.facts.get("balance_cents") or 0)
             card.setdefault("apr_bps", item.facts.get("apr_bps") or 0)
+            facts = dict(item.facts)
+            if item.type in ("late_fee_refund", "annual_fee") and item.value_cents:
+                facts.setdefault("fee_cents", item.value_cents)
             position += 1
-            row = _new_ask(uid, item.type, card, item.facts, ref=f"seed:{item.id}", source="seed", position=item.order or position,
+            row = _new_ask(uid, item.type, card, facts, ref=f"seed:{ask_id}", source="seed",
+                           position=item.order if item.order is not None else position,
                            on=item.created_on or on, title=item.title, subtitle=item.subtitle, value_cents=item.value_cents)
-            row.id, row.status, row.result = item.id, item.status, item.result
+            row.id, row.status, row.result = ask_id, item.status, item.result
             row.issuer = item.issuer if item.issuer != "other" else row.issuer
             if item.value_label:
                 row.value_label = item.value_label
@@ -986,13 +1005,14 @@ async def seed(req: SeedReq):
                 done_on = item.done_on or item.created_on or on
                 row.done_at = dt.datetime(done_on.year, done_on.month, done_on.day, 12, tzinfo=dt.UTC)
             s.add(row)
-            by_id[item.id] = row
+            by_id[ask_id] = row
             added["asks"] += 1
         await s.flush()
         for item in req.outcomes:
-            ask = by_id.get(item.ask_id) or await s.get(AskRow, item.ask_id)
+            ask_id = item.ask_id or (_seed_id(uid, item.ask_key) if item.ask_key else "")
+            ask = by_id.get(ask_id) or (await s.get(AskRow, ask_id) if ask_id else None)
             if ask is None or ask.user_id != uid:
-                raise NotFound(f"outcome refers to an unknown ask: {item.ask_id}", code="ask_not_found")
+                raise NotFound(f"outcome refers to an unknown ask: {item.ask_id or item.ask_key}", code="ask_not_found")
             when = item.date or on
             dedupe = ask.id if item.result != "no_answer" else f"{ask.id}:{when.isoformat()}"
             if (item.id and await s.get(OutcomeRow, item.id)) or (await s.execute(select(OutcomeRow).where(OutcomeRow.dedupe == dedupe))).first():

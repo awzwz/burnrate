@@ -1,0 +1,113 @@
+# Runs on every push and pull request. Nothing here pushes an image or touches a cluster:
+# releases are the manual workflow release.yml.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: Python (ruff, pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.1"          # the uv that wrote uv.lock; the Dockerfile uses the same
+          enable-cache: true
+      # --locked: fail when pyproject.toml and uv.lock disagree. uv installs Python 3.12 itself (requires-python).
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Ruff
+        run: uv run ruff check .
+      - name: Tests (everything except the browser tests)
+        run: uv run pytest -m "not e2e"
+        env:
+          BR_ENV: test
+          BR_LLM_PROVIDER: fake
+
+  web:
+    name: Front end (typecheck, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"         # the version of the build stage in web/Dockerfile
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  deploy-files:
+    name: Deployment files (scripts, manifests, charts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.1"
+      # kubectl, helm, shellcheck, python3 and jq are part of the ubuntu-latest image.
+      # No cluster is contacted: script syntax and shellcheck, generated manifests up to date, kustomize renders
+      # both profiles, every chart renders with our values, custom resources match the CRD schemas.
+      - name: Validate
+        run: deploy/scripts/validate.sh --all
+
+  images:
+    name: Docker build (${{ matrix.image }}), no push
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: api
+            dockerfile: Dockerfile
+          - image: web
+            dockerfile: web/Dockerfile
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.4.1
+      - uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: burnrate-${{ matrix.image }}:ci
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+      - name: The API image starts
+        if: matrix.image == 'api'
+        run: |
+          docker run -d --name api --read-only --tmpfs /tmp --tmpfs /data:uid=10001,gid=10001 --cap-drop ALL \
+            -e BR_MODE=local -e BR_ENV=dev -e BR_LLM_PROVIDER=fake -p 18000:8000 burnrate-api:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:18000/healthz; then echo; exit 0; fi
+            sleep 1
+          done
+          docker logs api
+          exit 1
+      - name: The web image serves the app and hides back-end paths
+        if: matrix.image == 'web'
+        run: |
+          docker run -d --name web --read-only --tmpfs /tmp:uid=101,gid=101 --cap-drop ALL -p 18080:8080 burnrate-web:ci
+          sleep 2
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/healthz)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/some/app/route)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/internal/engine/rules)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:18080/metrics)" = 404

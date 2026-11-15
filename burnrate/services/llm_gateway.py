@@ -208,7 +208,7 @@ async def extract_statement(req: ExtractReq):
     try:
         result = await _provider(active).extract(doc)
     except LLMError as e:
-        await _record(ctx, "extract-statement", active, Usage(), ok=False)
+        await _record(ctx, "extract-statement", active, e.usage or Usage(), ok=False)  # a refusal is billed too
         raise _domain(e) from e
     cost = await _record(ctx, "extract-statement", active, result.usage)
     try:

@@ -60,9 +60,10 @@ class LLMError(Exception):
     code = "llm_unavailable"
     status = 503
 
-    def __init__(self, message: str, *, code: str | None = None, status: int | None = None):
+    def __init__(self, message: str, *, code: str | None = None, status: int | None = None, usage: Usage | None = None):
         super().__init__(message)
         self.message = message
+        self.usage = usage  # set when the provider did answer (and bill) but the answer cannot be used
         if code:
             self.code = code
         if status:
@@ -136,8 +137,10 @@ def statement_schema(*, all_required: bool) -> dict:
             props[name] = {"anyOf": [{"type": _JSON_TYPE[kind]}, {"type": "null"}], "description": about}
         else:
             props[name] = {"type": _JSON_TYPE[kind], "description": about}
-    return {"type": "object", "properties": props, "required": [f[0] for f in FIELDS] if all_required else [],
-            "additionalProperties": False}
+    schema: dict = {"type": "object", "properties": props, "additionalProperties": False}
+    if all_required:
+        schema["required"] = [f[0] for f in FIELDS]
+    return schema
 
 
 class RawStatement(BaseModel):

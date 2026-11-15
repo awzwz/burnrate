@@ -503,3 +503,69 @@ async def test_seed_inserts_history_without_touching_cards_or_the_playbook(stack
     assert detail["script"]["lines"][1]["text"].startswith("I'm carrying a balance of $5,200 at 27.99%.")
     bad = await call(s, "POST", "/seed", json={"outcomes": [{"ask_id": "missing", "result": "refused"}]})
     assert bad.status_code == 404
+
+
+async def test_seed_by_key_gives_every_demo_guest_their_own_rows(stack):
+    """The demo service seeds the same persona for every guest, by `key` and `ask_key`, without card names."""
+    s = await stack(STACK)
+    seen: dict[str, list[str]] = {}
+    for guest in ("g1", "g2"):
+        ids = await add_cards(s, user=guest)
+        payload = {
+            "sprint_started_on": "2026-11-06",
+            "asks": [
+                {"key": "chase-rate", "card_id": ids[CHASE["name"]], "type": "apr_reduction", "status": "done", "order": 0,
+                 "created_on": "2026-11-06", "done_on": "2026-11-10", "result": "Rate lowered from 24.49% to 22.49%"},
+                {"key": "chase-fee", "card_id": ids[CHASE["name"]], "type": "late_fee_refund", "status": "queued", "order": 1,
+                 "created_on": "2026-11-06", "value_cents": 3_900},
+                {"key": "cap-rate", "card_id": ids[CAP["name"]], "type": "apr_reduction", "status": "queued", "order": 2, "created_on": "2026-11-06"},
+            ],
+            "outcomes": [{"ask_key": "chase-rate", "result": "granted", "channel": "phone", "old_apr_bps": 2449, "new_apr_bps": 2249,
+                          "date": "2026-11-10", "hard_pull": "no"}],
+        }
+        r = await s.internal("POST", "/internal/asks/seed", json=payload, user=guest, demo=True, clock_offset_s=NOW)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["added"] == {"asks": 3, "outcomes": 1}
+        assert [(a["type"], a["card_name"], a["issuer"], a["status"], a["order"]) for a in body["asks"]] == [
+            ("apr_reduction", "Chase Freedom Unlimited", "chase", "done", 1), ("late_fee_refund", "Chase Freedom Unlimited", "chase", "queued", 2),
+            ("apr_reduction", "Capital One Quicksilver", "capital_one", "queued", 3)]
+        fee = body["asks"][1]
+        assert (fee["value_cents"], fee["value_label"], fee["subtitle"]) == (3900, "$39", "$39 late fee")
+        detail = (await s.internal("GET", f"/internal/asks/{fee['id']}", user=guest, demo=True, clock_offset_s=NOW)).json()
+        assert "I was charged a $39 late fee on my [month] statement." in detail["script"]["lines"][1]["text"]
+        again = await s.internal("POST", "/internal/asks/seed", json=payload, user=guest, demo=True, clock_offset_s=NOW)
+        assert again.json()["added"] == {"asks": 0, "outcomes": 0}
+        meter = (await s.internal("GET", "/internal/asks/meter", user=guest, demo=True, clock_offset_s=NOW)).json()
+        assert [i["cents"] for i in meter["items"]] == [round(340_000 * 0.02 / 365 * 10)]
+        seen[guest] = [a["id"] for a in body["asks"]]
+    assert not set(seen["g1"]) & set(seen["g2"])  # the same keys, different rows
+    taken = await s.internal("POST", "/internal/asks/seed", user="g2", clock_offset_s=NOW,
+                             json={"asks": [{"id": seen["g1"][0], "card_id": "x", "type": "hardship"}]})
+    assert taken.status_code == 409 and taken.json()["error"]["code"] == "ask_id_taken"
+    nameless = await s.internal("POST", "/internal/asks/seed", user="g2", clock_offset_s=NOW, json={"asks": [{"card_id": "x", "type": "hardship"}]})
+    assert nameless.status_code == 422
+
+
+async def test_an_outcome_is_not_stored_while_the_cards_service_is_away(stack, monkeypatch):
+    from burnrate.common import clients
+    from burnrate.common.errors import Unavailable
+
+    s = await stack(STACK)
+    await add_cards(s, cards=(CHASE,))
+    [ask] = await built(s, answers={}, schedule=None)
+    real_get = clients.get
+
+    async def down(service, path, **kw):
+        if service == "cards":
+            raise Unavailable("cards is not reachable", code="cards_unavailable")
+        return await real_get(service, path, **kw)
+
+    monkeypatch.setattr(clients, "get", down)
+    r = await call(s, "POST", f"/{ask['id']}/outcome", json={"result": "granted", "channel": "phone", "new_apr_bps": 2049})
+    assert r.status_code == 503 and r.json()["error"]["code"] == "cards_unavailable"
+    listed = (await call(s, "GET", "")).json()  # the list still renders, from the numbers stored with the ask
+    assert listed["asks"][0]["status"] == "queued" and listed["asks"][0]["subtitle"] == "$3,400 at 22.49%"
+    monkeypatch.setattr(clients, "get", real_get)
+    ok = (await call(s, "POST", f"/{ask['id']}/outcome", json={"result": "granted", "channel": "phone", "new_apr_bps": 2049})).json()
+    assert ok["duplicate"] is False and ok["ask"]["result"] == "Rate lowered from 22.49% to 20.49%"

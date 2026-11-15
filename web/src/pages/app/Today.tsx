@@ -45,7 +45,7 @@ export default function TodayPage() {
           <h1 data-testid="today-headline">{today.headline}</h1>
           <p className="lead">{today.lead}</p>
         </div>
-        <span className="chip num" data-testid="today-burn" aria-label={`${usdPerDay(burn.now)} in interest a day`}>
+        <span className="chip num" aria-label={`${usdPerDay(burn.now)} in interest a day`}>
           <i />
           {usdPerDay(burn.now)} / day
         </span>
@@ -115,7 +115,8 @@ export default function TodayPage() {
             </div>
             <div className="trend">
               <div className="hd">
-                <div className="now num">
+                {/* The hook sits on the number that is visible in both layouts (the header chip is laptop-only). */}
+                <div className="now num" data-testid="today-burn">
                   {usdPerDay(burn.now)} <span>a day</span>
                 </div>
                 {Math.round(burn.down_by) > 0 && <div className="down num">↓ {usdPerDay(burn.down_by)} since you started</div>}

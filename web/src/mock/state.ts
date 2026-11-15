@@ -234,6 +234,8 @@ export function refreshInstruction(acc: Account): void {
   const openPast = cur && cur.status !== "paid" && cur.payday < acc.today && cur.next_payday > acc.today;
   const payday = openPast ? cur.payday : paydays(acc.schedule, acc.today, 1)[0];
   const short = acc.short && acc.short.payday === payday ? acc.short.available_cents : undefined;
+  // It keeps the numbers it had on its payday, unless the user has just said this payday is short.
+  if (openPast && (short === undefined) === (cur.status !== "short")) return;
   const built = buildInstruction(cards, acc.schedule, payday, { last4, available_cents: short });
   if (!built) {
     acc.instruction = null;
@@ -585,7 +587,7 @@ export function reconcile(acc: Account, st: MStatement): void {
     left -= posting;
   }
   if (Math.abs(left) > 2) {
-    parts.push({ label: "Not explained yet; we will ask you about it", cents: left - Math.sign(left) });
+    parts.push({ label: "Not explained by what we know about this card", cents: left - Math.sign(left) });
     left = Math.sign(left);
   }
   parts.push({ label: "Rounding", cents: left });
@@ -618,7 +620,9 @@ export function reconcile(acc: Account, st: MStatement): void {
       if (Math.abs(adj) >= 100) pushHistory(acc, `Statement check, ${shortName(card)}`, before);
     }
   }
-  if (typeof st.fields.apr_bps === "number" && st.fields.apr_bps !== card.apr_bps && st.fields.apr_bps > 0) {
+  // A rate the user logged after this statement closed is newer than the statement: keep it.
+  const newerRate = acc.rate_wins.some((w) => w.card_id === card.id && w.date > (st.fields.close_date ?? card.last_close));
+  if (!newerRate && typeof st.fields.apr_bps === "number" && st.fields.apr_bps !== card.apr_bps && st.fields.apr_bps > 0) {
     const before = totalBurn(liveCards(acc));
     const up = st.fields.apr_bps > card.apr_bps;
     if (up) st.triggers.push({ type: "apr_reduction", title: `Your rate went up to ${pct(st.fields.apr_bps)}`, detail: `The last statement showed ${pct(card.apr_bps)}. A rate that just rose is a fair reason to ask ${issuerName(card)} for a lower one.` });

@@ -39,7 +39,7 @@ function lateFee(card: AskCard, feeCents: number, order: number): MockAsk {
   const bank = issuerName(card);
   const fee = usd(feeCents);
   const must: MustAsk[] = [
-    { id: "when", label: "When will the refund show on my statement?", match: "when|how long|statement", answer: `The ${fee} credit posts in one to two billing cycles and will show on your next statement.` },
+    { id: "when", label: "When will the refund show on my statement?", match: "when will|when does|when would|when can|how long|how soon", answer: `The ${fee} credit posts in one to two billing cycles and will show on your next statement.` },
     NAME_Q,
   ];
   const nodes: Record<string, CallNode> = {

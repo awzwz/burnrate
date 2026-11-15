@@ -354,7 +354,7 @@ export default function CardDetail() {
 
           <div style={{ marginTop: 20 }}>
             <NewCharge card={card} onSaved={saved} />
-            <EditCard card={card} onSaved={saved} key={`${card.due_day}-${card.close_day}-${card.autopay}`} />
+            <EditCard card={card} onSaved={saved} />
           </div>
         </div>
 

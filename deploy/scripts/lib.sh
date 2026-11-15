@@ -2,6 +2,7 @@
 # Shared helpers for the deploy scripts. Source it, do not run it.
 # Written for bash 3.2 (the bash of macOS): no associative arrays, no mapfile.
 # Nothing here prints a secret value: secrets go file -> kubectl, output is discarded.
+# shellcheck disable=SC2034   # the variables below are used by the scripts that source this file
 
 DEPLOY_DIR=${DEPLOY_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}
 REPO_DIR=$(cd "$DEPLOY_DIR/.." && pwd)
@@ -78,7 +79,7 @@ helm_up() {
 
 # kubectl wrappers that only print in a dry run
 kapply() {
-  if dry; then info "[dry-run] kubectl apply $*"; return 0; fi
+  if dry; then local a="$*"; info "[dry-run] kubectl apply ${a//$DEPLOY_DIR/deploy}"; return 0; fi
   kubectl apply "$@" >/dev/null
 }
 kwait() {
@@ -92,7 +93,7 @@ rand() { openssl rand -hex "${1:-20}"; }
 ensure_env_file() {
   local f=$1; shift
   if dry; then
-    [[ -f "$f" ]] || info "[dry-run] would generate ${f#"$DEPLOY_DIR"/}"
+    [[ -f "$f" ]] || info "[dry-run] would generate deploy/${f#"$DEPLOY_DIR"/}"
     return 0
   fi
   mkdir -p "$SECRETS_DIR"; chmod 700 "$SECRETS_DIR"
@@ -108,7 +109,7 @@ ensure_env_file() {
   done
   chmod 600 "$f"
   umask "$old_umask"
-  info "generated ${f#"$DEPLOY_DIR"/} (gitignored)"
+  info "generated deploy/${f#"$DEPLOY_DIR"/} (gitignored)"
 }
 
 # env_get <file> <KEY>  -> value (for piping into other files only; never echo it to the terminal)
@@ -116,7 +117,7 @@ env_get() { grep -E "^$2=" "$1" | head -1 | cut -d= -f2-; }
 
 # secret_from_env_file <namespace> <name> <file>
 secret_from_env_file() {
-  if dry; then info "[dry-run] secret $1/$2 from ${3#"$DEPLOY_DIR"/}"; return 0; fi
+  if dry; then info "[dry-run] secret $1/$2 from deploy/${3#"$DEPLOY_DIR"/}"; return 0; fi
   kubectl -n "$1" create secret generic "$2" --from-env-file="$3" \
     --dry-run=client -o yaml | kubectl apply -f - >/dev/null
   info "secret $1/$2 applied"
@@ -153,9 +154,9 @@ public_host() {
 
 # wait_pods <namespace> <label-selector> [timeout]
 wait_pods() {
-  local ns=$1 sel=$2 t=${3:-600s} i
+  local ns=$1 sel=$2 t=${3:-600s}
   if dry; then info "[dry-run] wait for pods $ns $sel"; return 0; fi
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     [[ -n "$(kubectl -n "$ns" get pods -l "$sel" -o name 2>/dev/null)" ]] && break
     sleep 5
   done
@@ -183,7 +184,8 @@ wait_job() {
 git_tag() {
   local sha
   sha=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null) || die "not a git repository (pass --tag)"
-  if [[ -n "$(git -C "$REPO_DIR" status --porcelain 2>/dev/null)" ]]; then sha="$sha-dirty"; fi
+  # --no-optional-locks: do not take the index lock away from a teammate's git command running right now
+  if [[ -n "$(git -C "$REPO_DIR" --no-optional-locks status --porcelain 2>/dev/null)" ]]; then sha="$sha-dirty"; fi
   echo "$sha"
 }
 

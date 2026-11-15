@@ -15,19 +15,17 @@ worker -> topics (consumer group = worker name)
   plan-recalc            card.ledger.changed                                                    [code]
   statement-extractor    statement.uploaded                                                     [code]
   reconciler             statement.confirmed                                                    [code]
-  asks-events            -                                                                      [NOT FOUND]
-  playbook-aggregator    -                                                                      [NOT FOUND]
+  asks-events            cards.imported, statement.reconciled                                   [code]
+  playbook-aggregator    ask.outcome.logged                                                     [code]
   notifier               notify.request                                                         [code]
   billing-events         billing.provider.event, renewal.notice.due, subscription.activated     [code]
   analytics-sink         analytics.events                                                       [code]
 
-workers without topics (2): asks-events, playbook-aggregator
-  Such a worker exits at start with "worker <name> has no subscriptions" (burnrate/common/bus.py) and its
-  pod goes into CrashLoopBackOff. Its ScaledObject has one trigger without a topic.
+workers without topics (0): none
 
 topics declared in deploy/apps/topics.txt (19): subscription.activated, cards.imported, plan.activated, card.ledger.changed, payday.due, due.safety, statement.expected, statement.uploaded, statement.confirmed, statement.reconciled, ask.outcome.logged, notify.request, billing.payment.succeeded, billing.provider.event, renewal.notice.due, renewal.due, analytics.events, user.deleted, timer.fired
 topics used by the code but not declared (2; added to platform/strimzi/topics.yaml): notify.inbound, subscription.ended
-topics published but consumed by no worker (6): notify.inbound, plan.activated, renewal.due, statement.reconciled, subscription.ended, user.deleted
+topics published but consumed by no worker (5): notify.inbound, plan.activated, renewal.due, subscription.ended, user.deleted
 topics consumed but published nowhere in the code (0): none
 
 warnings (0)

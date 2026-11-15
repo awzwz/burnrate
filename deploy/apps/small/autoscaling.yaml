@@ -235,6 +235,14 @@ spec:
       metadata:
         bootstrapServers: "burnrate-kafka-bootstrap.data.svc.cluster.local:9092"
         consumerGroup: asks-events
+        topic: cards.imported
+        lagThreshold: "50"
+        offsetResetPolicy: earliest
+    - type: kafka
+      metadata:
+        bootstrapServers: "burnrate-kafka-bootstrap.data.svc.cluster.local:9092"
+        consumerGroup: asks-events
+        topic: statement.reconciled
         lagThreshold: "50"
         offsetResetPolicy: earliest
 ---
@@ -257,6 +265,7 @@ spec:
       metadata:
         bootstrapServers: "burnrate-kafka-bootstrap.data.svc.cluster.local:9092"
         consumerGroup: playbook-aggregator
+        topic: ask.outcome.logged
         lagThreshold: "50"
         offsetResetPolicy: earliest
 ---

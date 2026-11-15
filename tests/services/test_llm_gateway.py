@@ -499,8 +499,9 @@ async def test_anthropic_adapter_round_trip_without_network():
     assert events[-1].usage == Usage(120, 14) and sent[1]["stream"] is True and sent[1]["output_config"] == {"effort": "low"}
 
     answer["stop_reason"] = "refusal"  # a refusal is a handled failure, on both paths
-    with pytest.raises(LLMRefusal):
+    with pytest.raises(LLMRefusal) as refused:
         await provider.extract(PDF_DOC)
+    assert refused.value.usage == Usage(1500, 40)  # it was answered and billed, so the gateway can charge the budget
     with pytest.raises(LLMRefusal):
         [e async for e in provider.chat_stream("s", TALK, 220)]
     answer.update(stop_reason="max_tokens", text='{"new_balance": "53')

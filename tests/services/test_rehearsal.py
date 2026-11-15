@@ -206,6 +206,42 @@ async def test_a_session_ends_after_twenty_turns(stack):
     assert r.status_code == 409 and r.json()["error"]["code"] == "rehearsal_finished"
 
 
+async def test_a_broken_connection_to_the_gateway_still_ends_the_turn(stack, monkeypatch):
+    from burnrate.services import rehearsal
+
+    s = await stack(STACK)
+    sid = (await start(s, (await an_ask(s))["id"])).json()["id"]
+
+    async def broken(system, messages):
+        yield {"delta": "Sure, "}
+        raise ConnectionError("the gateway went away")
+
+    monkeypatch.setattr(rehearsal, "gateway_stream", broken)
+    r, deltas, done = await say(s, sid, "Hello?")
+    assert r.status_code == 200 and deltas == ["Sure, "]
+    assert done["messages"][-1] == {"role": "rep", "text": rehearsal.LINE_DROPPED, "replaced": True} and done["finished"] is False
+
+
+async def test_in_the_cluster_the_reply_comes_through_the_shared_streaming_client(monkeypatch):
+    from types import SimpleNamespace
+
+    from burnrate.common import clients
+    from burnrate.services import rehearsal
+
+    calls: list[tuple] = []
+
+    async def lines(service, method, path, *, json=None, timeout=120.0):
+        calls.append((service, method, path, json["task"], json["stream"], json["max_tokens"]))
+        yield '{"delta": "Hi"}'
+        yield '{"done": true, "text": "Hi", "provider": "openai", "model": "gpt-5.4-mini"}'
+
+    monkeypatch.setattr(clients, "stream_lines", lines)
+    monkeypatch.setattr(rehearsal, "settings", lambda: SimpleNamespace(is_local=False, internal_token="t"))
+    got = [line async for line in rehearsal.gateway_stream("You are a phone rep.", [{"role": "user", "content": "hi"}])]
+    assert got == [{"delta": "Hi"}, {"done": True, "text": "Hi", "provider": "openai", "model": "gpt-5.4-mini"}]
+    assert calls == [("llm-gateway", "POST", "/internal/llm/chat", "rehearsal", True, rehearsal.REPLY_TOKENS)]
+
+
 async def test_gateway_lines_arrive_while_the_reply_is_still_being_written(stack, monkeypatch):
     from burnrate.common.llm import fake
     from burnrate.common.llm.base import ChatDelta, ChatDone, Usage

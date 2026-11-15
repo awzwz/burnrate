@@ -147,7 +147,8 @@ async def _seed_asks(ids: dict[str, str], d0: dt.date, hist: dict) -> None:
     rc = hist["rate_cut"]
     try:
         await clients.post("asks", "/internal/asks/seed", json={
-            "sprint_started_on": hist["started_on"],
+            # the current two-week sprint is half done on the demo day, so its end date is still ahead
+            "sprint_started_on": (d0 - dt.timedelta(days=7)).isoformat(),
             "asks": [
                 {"key": "chase-rate", "card_id": ids[rc["card"]], "type": "apr_reduction", "status": "done", "order": 0,
                  "created_on": hist["started_on"], "done_on": rc["date"], "result": "Rate lowered from 24.49% to 22.49%"},

@@ -79,7 +79,7 @@ export default function Plans() {
             error={error}
           />
           {!me?.entitled && (
-            <p className="pay-note" style={{ margin: "-8px 16px 32px" }}>
+            <p className="pay-note" style={{ margin: "0 16px 32px" }}>
               Just looking?{" "}
               <button className="textlink" type="button" onClick={demo} disabled={demoBusy}>
                 Open the demo with sample numbers

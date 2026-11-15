@@ -148,16 +148,22 @@ function todayView(acc: Account): Today {
   const autopay: AutopayRow[] = cards
     .filter((c) => c.balance_cents > 0)
     .map((c) => {
-      const due = nextDayOfMonth(c.due_day, ins?.payday && ins.payday <= acc.today ? ins.payday : acc.today);
+      const due = nextDayOfMonth(c.due_day, acc.today);
       const min = minPayment(c);
       let source: AutopayRow["source"] = "next_paycheck";
-      let note = ins ? `from your ${dateShort(ins.status === "upcoming" ? ins.payday : ins.next_payday)} paycheck` : "paid by autopay";
-      if (ins && send && send.card_id === c.id && send.covers_min) {
-        source = "covered_by_payment";
-        note = ins.status === "paid" ? "covered by your payment" : ins.status === "upcoming" ? "covered by your next payment" : "covered by today's payment";
-      } else if (ins && ins.status !== "upcoming" && due < ins.next_payday) {
-        source = "this_paycheck";
-        note = "reserved from this paycheck";
+      let note = "paid by autopay";
+      if (ins) {
+        // The paycheck that sets this minimum aside is the last one before its due date.
+        const upcomingPayday = ins.status === "upcoming" ? ins.payday : ins.next_payday;
+        const before = paydays(acc.schedule, upcomingPayday, 8).filter((p) => p < due);
+        note = `from your ${dateShort(before.length ? before[before.length - 1] : upcomingPayday)} paycheck`;
+        if (send && send.card_id === c.id && send.covers_min && send.due === due) {
+          source = "covered_by_payment";
+          note = ins.status === "paid" ? "covered by your payment" : ins.status === "upcoming" ? "covered by your next payment" : ins.payday === acc.today ? "covered by today's payment" : "covered by this payment";
+        } else if (due < upcomingPayday) {
+          source = "this_paycheck";
+          note = ins.status === "upcoming" ? "set aside from your last paycheck" : "reserved from this paycheck";
+        }
       }
       return { card_id: c.id, card_name: c.name, issuer: c.issuer, min_cents: min, due, source, note };
     })

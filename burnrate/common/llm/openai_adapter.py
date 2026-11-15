@@ -31,6 +31,7 @@ from burnrate.common.llm.base import (
 )
 
 EFFORT = "low"
+TIMEOUT_S = 50.0  # with one retry this stays under the 120 s the statements service waits for an extraction
 EXTRACT_MAX_TOKENS = 2000
 REASONING_HEADROOM = 800  # max_output_tokens also covers reasoning tokens
 _REASONING_PREFIXES = ("gpt-5", "o1", "o3", "o4")  # models that accept the `reasoning` parameter
@@ -126,7 +127,7 @@ class OpenAIProvider:
 
     def __init__(self, model: str, api_key: str = "", *, client: openai.AsyncOpenAI | None = None):
         self.model = model
-        self.client = client or openai.AsyncOpenAI(api_key=api_key, max_retries=1, timeout=90.0)
+        self.client = client or openai.AsyncOpenAI(api_key=api_key, max_retries=1, timeout=TIMEOUT_S)
 
     async def extract(self, doc: Document) -> ExtractResult:
         request = build_extract_request(self.model, doc)
@@ -137,16 +138,16 @@ class OpenAIProvider:
             raise LLMError(f"OpenAI could not finish: {response.error.message}", code="llm_unavailable", status=503)
         refusal = _refusal_text(response)
         if refusal:
-            raise LLMRefusal("The model declined this request.")
+            raise LLMRefusal("The model declined this request.", usage=usage)
         if response.status == "incomplete":
             reason = response.incomplete_details.reason if response.incomplete_details else None
             if reason == "content_filter":
-                raise LLMRefusal("The model's answer was stopped by a content filter.")
-            raise LLMBadOutput("The model ran out of room before finishing the statement fields.")
+                raise LLMRefusal("The model's answer was stopped by a content filter.", usage=usage)
+            raise LLMBadOutput("The model ran out of room before finishing the statement fields.", usage=usage)
         try:
             raw = json.loads(response.output_text)
         except json.JSONDecodeError as e:
-            raise LLMBadOutput("The model did not return valid JSON.") from e
+            raise LLMBadOutput("The model did not return valid JSON.", usage=usage) from e
         return ExtractResult(raw=raw, usage=usage)
 
     async def chat_stream(self, system: str, messages: list[dict], max_tokens: int) -> AsyncIterator[ChatDelta | ChatDone]:

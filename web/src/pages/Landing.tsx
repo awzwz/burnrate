@@ -12,10 +12,11 @@ import { useSession } from "../state/session";
 // Sample inputs for the hero card. They are sent to POST /api/quiz/card-burn; the per-day figures come back
 // from the server, and the card is labelled "sample data". The last row is the first card after the sample payment.
 const SAMPLE_CARDS = [
-  { name: "Capital One Quicksilver", balance_cents: 520000, apr_bps: 2799 },
-  { name: "Chase Freedom Unlimited", balance_cents: 340000, apr_bps: 2249 },
-  { name: "Discover it", balance_cents: 190000, apr_bps: 2499 },
+  { balance_cents: 520000, apr_bps: 2799 },
+  { balance_cents: 340000, apr_bps: 2249 },
+  { balance_cents: 190000, apr_bps: 2499 },
 ];
+const SAMPLE_FIRST_CARD = "Capital One Quicksilver";
 const SAMPLE_TOTAL_CENTS = 1050000;
 const SAMPLE_SEND_CENTS = 24000;
 const SAMPLE_AFTER = { balance_cents: 496000, apr_bps: 2799 };
@@ -69,7 +70,7 @@ function SamplePanel({ burn }: { burn: SampleBurn }) {
       <div className="mini">
         <div className="when">On payday</div>
         <p className="num">
-          Send {usdShort(SAMPLE_SEND_CENTS)} to {SAMPLE_CARDS[0].name}.
+          Send {usdShort(SAMPLE_SEND_CENTS)} to {SAMPLE_FIRST_CARD}.
         </p>
         <div className="after num">
           Then the burn is <b>{usdPerDay(burn.after)} a day</b>.

@@ -23,6 +23,7 @@ export default function DemoBar() {
   const [seen, setSeen] = useState<number | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
 
   const loadInbox = useCallback(() => {
     api
@@ -43,7 +44,20 @@ export default function DemoBar() {
     if (!open) return;
     closeRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") return close();
+      if (e.key !== "Tab" || !drawerRef.current) return;
+      // Keep Tab inside the open drawer.
+      const items = drawerRef.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])");
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -79,7 +93,7 @@ export default function DemoBar() {
   return (
     <>
       <div className="demo" data-testid="demo-bar" role="region" aria-label="Demo controls">
-        <span className="num">
+        <span className="num what">
           <b>Demo</b> · {persona}'s numbers · {dateLong(me.demo.today)}
         </span>
         <span className="ctl">
@@ -89,19 +103,20 @@ export default function DemoBar() {
               {a.action.startsWith("next") ? " →" : ""}
             </button>
           ))}
-          <button
-            type="button"
-            ref={opener}
-            onClick={() => {
-              setOpen(true);
-              loadInbox();
-            }}
-            aria-haspopup="dialog"
-            data-testid="demo-inbox"
-          >
-            Inbox{fresh > 0 ? ` (${fresh} new)` : ""}
-          </button>
         </span>
+        <button
+          className="inbox"
+          type="button"
+          ref={opener}
+          onClick={() => {
+            setOpen(true);
+            loadInbox();
+          }}
+          aria-haspopup="dialog"
+          data-testid="demo-inbox"
+        >
+          Inbox{fresh > 0 ? ` (${fresh} new)` : ""}
+        </button>
       </div>
       {note && (
         <div className="demo-note" role="status" data-testid="demo-note">
@@ -114,7 +129,7 @@ export default function DemoBar() {
       {open && (
         <>
           <div className="scrim" onClick={close} />
-          <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="inbox-title">
+          <div className="drawer" role="dialog" aria-modal="true" aria-labelledby="inbox-title" ref={drawerRef}>
             <header>
               <div>
                 <h2 id="inbox-title">Inbox</h2>
