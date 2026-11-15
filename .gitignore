@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.data/
+.env
+.env.*
+!.env.example
+node_modules/
+web/dist/
+deploy/secrets/
+.pytest_cache/
+.ruff_cache/
+test-results/
+playwright-report/
+*.egg-info/
