@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Burn Rate</title>
+<meta name="description" content="See what your credit cards cost you every day, and what to do about it on payday.">
+<style>
+:root{--ink:#1d1d1f;--soft:#6e6e73;--bg:#fbfbfd;--tile:#f5f5f7;--blue:#0071e3;--line:#d2d2d7;--orange:#bf4800}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;line-height:1.47}
+a{color:inherit}
+.nav{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;max-width:1024px;margin:0 auto;font-size:14px}
+.brand{font-weight:600;font-size:17px;letter-spacing:-.2px;text-decoration:none}
+.btn{display:inline-block;background:var(--blue);color:#fff;text-decoration:none;border-radius:980px;padding:12px 24px;font-size:17px}
+.btn.small{padding:6px 14px;font-size:13px}
+.btn:hover{background:#0077ed}
+.hero{text-align:center;padding:72px 22px 56px;max-width:860px;margin:0 auto}
+.eyebrow{color:var(--orange);font-weight:600;font-size:15px;margin-bottom:12px}
+h1{font-size:clamp(38px,7vw,68px);line-height:1.06;letter-spacing:-.02em;font-weight:600}
+.lead{font-size:clamp(18px,2.4vw,23px);color:var(--soft);margin:20px auto 30px;max-width:620px}
+.note{font-size:13px;color:var(--soft);margin-top:16px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:1024px;margin:0 auto;padding:0 22px 40px}
+.tile{background:var(--tile);border-radius:22px;padding:28px}
+.tile b{display:block;font-size:21px;letter-spacing:-.01em;margin-bottom:8px}
+.tile p{font-size:15px;color:#424245}
+.num{background:#1d1d1f;color:#f5f5f7;border-radius:22px;max-width:980px;margin:0 22px 16px;padding:32px 28px;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 20px}
+.wrap{max-width:1024px;margin:0 auto}
+.num .big{font-size:clamp(48px,9vw,84px);font-weight:600;letter-spacing:-.03em;line-height:1}
+.num .txt{font-size:17px;color:#d2d2d7;max-width:440px}
+.num .lab{width:100%;color:#ffb27a;font-size:14px;font-weight:600}
+footer{max-width:1024px;margin:0 auto;padding:24px 22px 48px;font-size:12px;color:var(--soft);border-top:1px solid var(--line)}
+@media(max-width:760px){.tiles{grid-template-columns:1fr}.hero{padding:48px 22px 40px}}
+</style>
+</head>
+<body>
+<div class="nav"><a class="brand" href="./">Burn Rate</a><a class="btn small" id="go-top" href="https://montgomery-buffalo-animals-communications.trycloudflare.com/">Open the product</a></div>
+<section class="hero">
+<p class="eyebrow">For people who carry credit-card balances</p>
+<h1>See what your cards cost you. Every single day.</h1>
+<p class="lead">One payment instruction per paycheck. Checked against your statement every month.</p>
+<a class="btn" id="go" href="https://montgomery-buffalo-animals-communications.trycloudflare.com/">Open the product</a>
+<p class="note">No login needed. Demo data is labelled as demo.</p>
+</section>
+<div class="wrap">
+<div class="num"><span class="lab">Example: three cards, $10,500</span><span class="big">$7.38</span><span class="txt">in interest every day. $2,695 a year at this pace.</span></div>
+</div>
+<div style="height:16px"></div>
+<section class="tiles">
+<div class="tile"><b>First 14 days: the asks</b><p>What to ask each card issuer, a script with your numbers, and a practice call with an AI bank rep.</p></div>
+<div class="tile"><b>Every payday: one amount, one card</b><p>Minimums stay on autopay. The rest goes to one card on the day your paycheck lands.</p></div>
+<div class="tile"><b>Every statement: a check</b><p>Our forecast next to the bank's number, with the difference explained.</p></div>
+</section>
+<footer>You make every payment and every call yourself. Burn Rate never moves money and never contacts a bank. Planning software, not debt relief or credit repair. · <a href="https://github.com/awzwz/burnrate">Source code</a></footer>
+</body>
+</html>
