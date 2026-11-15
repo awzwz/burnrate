@@ -1,0 +1,23 @@
+# Kafka topics of Burn Rate, one per line. THE table to edit when a topic is added.
+# deploy/scripts/gen-apps.sh turns it into deploy/platform/strimzi/topics.yaml (KafkaTopic objects, applied in the
+# `full` profile) and compares it with the code: a topic the code publishes or subscribes to but that is missing
+# here is reported in deploy/apps/GENERATED.txt and declared anyway.
+subscription.activated
+cards.imported
+plan.activated
+card.ledger.changed
+payday.due
+due.safety
+statement.expected
+statement.uploaded
+statement.confirmed
+statement.reconciled
+ask.outcome.logged
+notify.request
+billing.payment.succeeded
+billing.provider.event
+renewal.notice.due
+renewal.due
+analytics.events
+user.deleted
+timer.fired

@@ -1,0 +1,100 @@
+# Kafka cluster "burnrate" (Strimzi, API kafka.strimzi.io/v1, KRaft), profile "full":
+# THREE nodes, each controller and broker, on three different Kubernetes nodes. Replication factor 3,
+# min.insync.replicas 2: one broker can be lost without losing or refusing a write.
+# Topics are declared: topics.yaml (generated from deploy/apps/topics.txt).
+# Bootstrap: burnrate-kafka-bootstrap.data:9092 (plain, in-cluster only).
+#
+# Moving from "small" to "full" is NOT an in-place change of this file (one node -> three, RF 1 -> 3 means
+# reassigning every partition). On a throw-away cluster: delete the Kafka cluster and its volumes, apply this.
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual
+  namespace: data
+  labels:
+    strimzi.io/cluster: burnrate
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 20Gi
+        class: do-block-storage
+        deleteClaim: false
+        kraftMetadata: shared
+  jvmOptions:
+    "-Xms": 768m
+    "-Xmx": 768m
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1536Mi
+    limits:
+      memory: 1536Mi
+  template:
+    pod:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  strimzi.io/cluster: burnrate
+                  strimzi.io/pool-name: dual
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: burnrate
+  namespace: data
+spec:
+  kafka:
+    version: 4.3.1
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+        networkPolicyPeers:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: burnrate
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: platform
+          - podSelector: {}
+    config:
+      offsets.topic.replication.factor: 3
+      transaction.state.log.replication.factor: 3
+      transaction.state.log.min.isr: 2
+      default.replication.factor: 3
+      min.insync.replicas: 2
+      num.partitions: 6
+      # The topics are declared in topics.yaml. Creation on first use stays on as a safety net, with the same
+      # replication as above: the outbox relay of a service stops at the first event it cannot publish, and a
+      # topic somebody forgot to declare must not stop a service.
+      auto.create.topics.enable: true
+      log.retention.hours: 336
+      log.segment.bytes: 104857600
+  entityOperator:
+    topicOperator:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 192Mi
+        limits:
+          memory: 384Mi
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 128Mi

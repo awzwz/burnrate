@@ -36,8 +36,8 @@ _UP_VERB = (r"(?:improv|rais|boost|increas|lift|build|rebuild|fix|repair|restor|
 
 _RULES: list[tuple[str, str, list[str]]] = [
     ("we_lower_your_rate", "The product does not change anyone's rate; the cardholder asks and the issuer decides.", [
-        rf"\b{_US}{_AUX}\s+(?:lower|reduce|cut|slash|drop|decrease|shrink|bring\s+down)(?:s|d|ed|ped|ting|ping|ing)?"
-        rf"\s+(?:your|the|their|my)?\s*{_RATE_THING}\b",
+        (rf"\b{_US}{_AUX}\s+(?:lower|reduce|cut|slash|drop|decrease|shrink|bring\s+down)(?:s|d|ed|ped|ting|ping|ing)?"
+         rf"\s+(?:your|the|their|my)?\s*{_RATE_THING}\b"),
         rf"\b{_US}{_AUX}\s+get(?:s|ting)?\s+(?:you|your)\s+(?:a\s+)?(?:lower|better|reduced)\s+{_RATE_THING}\b",
     ]),
     ("we_negotiate_for_you", "The product is not an intermediary and does not negotiate with anyone.", [
@@ -48,8 +48,8 @@ _RULES: list[tuple[str, str, list[str]]] = [
     ]),
     ("we_will_call", "Nobody at Burn Rate calls an issuer or a customer; there is no phone channel.", [
         rf"(?<!what\s)\b{_US}{_AUX}\s+(?:call|phone|ring|dial)(?:s|ed|ing)?\b(?!\s+(?:it|this|that|these|those)\b)",
-        rf"\b{_US}{_AUX}\s+(?:contact|reach\s+out\s+to|speak\s+(?:to|with)|talk\s+(?:to|with))(?:s|ed|ing)?"
-        r"\s+(?:your|the)\s+(?:\w+\s+){0,2}?(?:bank|issuer|card\s+compan(?:y|ies)|creditors?|lenders?)\b",
+        (rf"\b{_US}{_AUX}\s+(?:contact|reach\s+out\s+to|speak\s+(?:to|with)|talk\s+(?:to|with))(?:s|ed|ing)?"
+         r"\s+(?:your|the)\s+(?:\w+\s+){0,2}?(?:bank|issuer|card\s+compan(?:y|ies)|creditors?|lenders?)\b"),
         r"\blet\s+us\s+(?:make\s+the\s+)?call\b",
     ]),
     ("debt_relief", "'Debt relief' names a regulated service the product is not.", [
@@ -58,8 +58,8 @@ _RULES: list[tuple[str, str, list[str]]] = [
         r"\bdebt[\s-]*(?:forgiveness|elimination|negotiation|resolution)\b",
     ]),
     ("settle_your_debt", "Settling debt is a regulated service the product is not.", [
-        r"\bsettl(?:e|es|ed|ing)\s+(?:(?:your|my|the|their|a|an|any|all|this|that|those|these|credit|card)\s+){0,3}"
-        r"(?:debts?|balances?|accounts?|cards?|bills?|loans?)\b",
+        (r"\bsettl(?:e|es|ed|ing)\s+(?:(?:your|my|the|their|a|an|any|all|this|that|those|these|credit|card)\s+){0,3}"
+         r"(?:debts?|balances?|accounts?|cards?|bills?|loans?)\b"),
         r"\bdebts?\s+settl(?:ement|ements|ed|ing)\b",
         r"\bsettlement\s+(?:offers?|programs?|compan(?:y|ies)|services?|plans?)\b",
         r"\bsettl(?:e|es|ed|ing)\s+for\s+(?:less|pennies|a\s+fraction)\b",
@@ -70,21 +70,21 @@ _RULES: list[tuple[str, str, list[str]]] = [
         rf"\b(?:{_US}|i|they|it|this|that|which|issuers?|banks?){_AUX}\s+guarantee(?:s|ing)?\b",
     ]),
     ("you_will_save", "A saving is arithmetic with visible assumptions, never a promise.", [
-        r"\byou(?:\s+will|'ll|\s+are\s+going\s+to|'re\s+going\s+to|\s+are\s+sure\s+to|\s+can\s+expect\s+to|\s+shall)"
-        r"(?:\s+(?:be|definitely|certainly|surely|always|also|soon|easily))*\s+sav(?:e|ing)\b",
+        (r"\byou(?:\s+will|'ll|\s+are\s+going\s+to|'re\s+going\s+to|\s+are\s+sure\s+to|\s+can\s+expect\s+to|\s+shall)"
+         r"(?:\s+(?:be|definitely|certainly|surely|always|also|soon|easily))*\s+sav(?:e|ing)\b"),
         r"\byou(?:'re|\s+are)\s+guaranteed\b",
     ]),
     ("typical_savings", "Typical or average savings need a representative sample the product does not have.", [
         r"\b(?:typical|average|usual|normal|expected|median)\s+(?:\w+\s+){0,2}?sav(?:ing|ings)\b",
         r"\b(?:typically|usually|normally|generally|on\s+average)\s+sav(?:e|es|ed)\b",
         r"\bsav(?:e|es|ed|ing|ings)\s+(?:of\s+)?(?:an\s+average\s+of|on\s+average)\b",
-        r"\b(?:users?|members?|customers?|people|cardholders?)\s+(?:typically\s+|usually\s+|on\s+average\s+)?sav(?:e|es|ed)\s+"
-        r"(?:an\s+average|\$|\d)",
+        (r"\b(?:users?|members?|customers?|people|cardholders?)\s+(?:typically\s+|usually\s+|on\s+average\s+)?sav(?:e|es|ed)\s+"
+         r"(?:an\s+average|\$|\d)"),
     ]),
     ("credit_score_claim", "Nothing about improving a credit score, report or rating (credit repair law).", [
         rf"\b{_UP_VERB}\s+(?:\w+\s+){{0,3}}?(?:{_CREDIT_THING})\b",
-        rf"\b(?:{_CREDIT_THING})\s+(?:\w+\s+){{0,3}}?(?:go(?:es)?\s+up|going\s+up|ris(?:e|es|ing)|climb(?:s|ing)?|"
-        r"jump(?:s|ing)?|improv(?:e|es|ed|ing|ement)|increas(?:e|es|ed|ing)|recover(?:s|ed|ing)?|boost(?:s|ed)?)\b",
+        (rf"\b(?:{_CREDIT_THING})\s+(?:\w+\s+){{0,3}}?(?:go(?:es)?\s+up|going\s+up|ris(?:e|es|ing)|climb(?:s|ing)?|"
+         r"jump(?:s|ing)?|improv(?:e|es|ed|ing|ement)|increas(?:e|es|ed|ing)|recover(?:s|ed|ing)?|boost(?:s|ed)?)\b"),
         rf"\b(?:higher|better|stronger|improved|healthier)\s+(?:{_CREDIT_THING})\b",
         rf"\b(?:good|great|help(?:s|ed)?|helpful)\s+for\s+(?:your\s+)?(?:{_CREDIT_THING})\b",
         rf"\bhelp(?:s|ed|ing)?\s+(?:your\s+)?(?:{_CREDIT_THING})\b",
@@ -92,8 +92,8 @@ _RULES: list[tuple[str, str, list[str]]] = [
     ]),
     ("credit_repair", "Credit repair is a regulated service the product is not.", [
         r"\bcredit[\s-]*repair\b",
-        r"\b(?:repair|fix|rebuild|restore|clean\s+up)(?:s|ed|ing)?\s+(?:your|my|their|the)?\s*(?:bad\s+|poor\s+|damaged\s+)?credit\b"
-        r"(?!\s*(?:cards?|limit|line)\b)",
+        (r"\b(?:repair|fix|rebuild|restore|clean\s+up)(?:s|ed|ing)?\s+(?:your|my|their|the)?\s*(?:bad\s+|poor\s+|damaged\s+)?credit\b"
+         r"(?!\s*(?:cards?|limit|line)\b)"),
     ]),
     ("professional_negotiator", "The product may not present itself, or its AI, as a professional negotiator.", [
         r"\b(?:as|like)\s+(?:a|an|your|your\s+own|your\s+personal)\s+(?:\w+\s+){0,2}?negotiator\b",
@@ -113,12 +113,13 @@ _COMPILED = [(name, [re.compile(p, re.IGNORECASE) for p in patterns]) for name, 
 _NUM = r"\d[\d,]*(?:\.\d+)?|\.\d+"
 _DOLLAR_SIGN = re.compile(rf"(?:US\s*)?\$\s*({_NUM})(?:\s*(k|thousand|m|million)\b)?", re.IGNORECASE)
 _DOLLAR_WORD = re.compile(rf"(?<![\w$.,])({_NUM})(?:\s*(k|thousand|million))?\s*(?:dollars?|usd|bucks)\b", re.IGNORECASE)
-_CENTS_WORD = re.compile(rf"(?<![\w$.,])({_NUM})\s*(?:cents?\b|¢)", re.IGNORECASE)
+_CENTS_WORD = re.compile(rf"(?<![\w$.,])({_NUM})\s*(?:cents?\b|\u00a2)", re.IGNORECASE)
 _PERCENT = re.compile(rf"(?<![\w$.,])({_NUM})\s*(?:%|percent(?:age\s+points?)?\b|per\s+cent\b|pct\b)", re.IGNORECASE)
 _BARE = re.compile(rf"^\s*({_NUM})\s*$")
 _SCALE = {"k": 1_000, "thousand": 1_000, "m": 1_000_000, "million": 1_000_000}
-_CLEAN = str.maketrans({" ": " ", " ": " ", " ": " ", "’": "'", "‘": "'", "ʼ": "'",
-                        "​": None, "‌": None, "‍": None, "﻿": None, "­": None})
+# Typographic variants that would otherwise slip past the patterns: odd spaces, curly apostrophes, invisible characters.
+_CLEAN = str.maketrans({"\u00a0": " ", "\u2009": " ", "\u202f": " ", "\u2019": "'", "\u2018": "'", "\u02bc": "'",
+                        "\u200b": None, "\u200c": None, "\u200d": None, "\ufeff": None, "\u00ad": None})
 
 
 def _canon(raw: str, scale: int | Decimal = 1) -> str | None:

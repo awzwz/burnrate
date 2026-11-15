@@ -1,0 +1,4 @@
+# Linkerd control plane, additions for profile "full": three replicas of each controller on different nodes.
+controllerReplicas: 3
+enablePodAntiAffinity: true
+enablePodDisruptionBudget: true

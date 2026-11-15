@@ -1,0 +1,43 @@
+# Let's Encrypt issuers. HTTP-01 through the Gateway: cert-manager creates a temporary HTTPRoute for
+# /.well-known/acme-challenge/<token> in the namespace of the Certificate (edge) and attaches it to the
+# port 80 listener of Gateway edge/burnrate.
+# No account e-mail on purpose (optional for ACME; Let's Encrypt no longer sends expiry mail).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-prod-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                namespace: edge
+                name: burnrate
+                sectionName: http
+---
+# Fallback when the production rate limits are hit (browsers will warn; smoke.sh fails the certificate check).
+#   ISSUER=letsencrypt-staging deploy/scripts/bootstrap.sh certificate
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-staging-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                namespace: edge
+                name: burnrate
+                sectionName: http

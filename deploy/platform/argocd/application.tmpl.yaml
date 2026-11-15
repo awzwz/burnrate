@@ -1,0 +1,26 @@
+# Profile "full" only. Argo CD Application for the application manifests (kustomize, deploy/apps/full).
+# __REPO_URL__ and __REVISION__ are filled in by bootstrap.sh (step argocd) from ARGOCD_REPO_URL and
+# ARGOCD_REVISION; without ARGOCD_REPO_URL the Application is not applied at all.
+#
+# Automated sync is OFF on purpose. Two things in a release are not in git and are done by deploy.sh:
+#   - the schema Job has to finish before the Deployments change;
+#   - deploy/apps/env (hostname, image tags) is written by deploy.sh; commit it if Argo CD should deploy it.
+# So today Argo CD shows drift and history; deploy.sh remains the way to release.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: burnrate-apps
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: __REPO_URL__
+    targetRevision: __REVISION__
+    path: deploy/apps/full
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: burnrate
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true

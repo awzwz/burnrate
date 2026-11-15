@@ -13,3 +13,4 @@ deploy/secrets/
 test-results/
 playwright-report/
 *.egg-info/
+web/.screens/

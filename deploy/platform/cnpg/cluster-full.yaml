@@ -1,0 +1,58 @@
+# PostgreSQL 17 cluster "pg" (CloudNativePG), namespace data, profile "full": 3 instances.
+#   pg-rw.data:5432   read/write (the primary; follows a failover)      pg-ro / pg-r   replicas
+# One database per service, all owned by role "burnrate": databases.yaml (generated from SERVICES).
+# The password of "burnrate" comes from the Secret data/pg-burnrate, which bootstrap.sh creates from
+# deploy/secrets/pg.env BEFORE this cluster. It is listed under managed.roles too, so that a changed Secret
+# changes the password in the database (rotation: deploy/scripts/secrets.sh --rotate db).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: pg
+  namespace: data
+spec:
+  instances: 3
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.12-standard-trixie
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 20Gi
+    storageClass: do-block-storage
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+    podAntiAffinityType: required     # never two instances on one node
+  postgresql:
+    parameters:
+      # Every application process keeps a small pool per database it uses (pool_size 5 + 5 overflow,
+      # burnrate/common/db.py). There is no PgBouncer in front: the asyncpg driver uses prepared statements,
+      # which transaction pooling breaks unless the application switches them off.
+      max_connections: "500"
+      shared_buffers: 128MB
+      effective_cache_size: 384MB
+      work_mem: 4MB
+      maintenance_work_mem: 64MB
+    # one replica confirms every commit before the client hears "done"
+    synchronous:
+      method: any
+      number: 1
+  bootstrap:
+    initdb:
+      database: burnrate              # owner's own database; the services use the ones in databases.yaml
+      owner: burnrate
+      secret:
+        name: pg-burnrate
+  managed:
+    roles:
+      - name: burnrate
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-burnrate
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+  monitoring:
+    # scraped by the PodMonitor in deploy/platform/kube-prometheus-stack/monitors.yaml
+    enablePodMonitor: false

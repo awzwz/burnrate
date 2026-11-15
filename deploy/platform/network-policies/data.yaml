@@ -1,0 +1,135 @@
+# Network policy of the data namespace: PostgreSQL, Kafka and Valkey accept connections on their client ports
+# from the APPLICATION namespace only. Everything else is denied, with three narrow exceptions without which
+# the stores themselves do not run:
+#   - pods of this namespace talk to each other (PostgreSQL replication, Kafka exporter -> brokers);
+#   - the operators in namespace platform reach what they manage (CloudNativePG -> instance manager and
+#     PostgreSQL; Strimzi -> brokers is in the policy Strimzi writes itself; KEDA -> Kafka 9092 to read
+#     consumer lag is in the listener's networkPolicyPeers, deploy/platform/strimzi/kafka-*.yaml);
+#   - Prometheus scrapes the exporters.
+# Outgoing traffic is not restricted.
+#
+# Test from a throw-away pod (must time out from any namespace other than burnrate):
+#   kubectl -n default run np-test --rm -it --restart=Never --image=busybox:1.37 -- nc -zv -w 3 pg-rw.data 5432
+#   kubectl -n burnrate run np-test --rm -it --restart=Never --image=busybox:1.37 \
+#     --overrides='{"metadata":{"annotations":{"linkerd.io/inject":"disabled"}}}' -- nc -zv -w 3 pg-rw.data 5432
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: data
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: data
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-apps
+  namespace: data
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: pg
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: burnrate
+      ports:
+        - {protocol: TCP, port: 5432}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: valkey-from-apps
+  namespace: data
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: burnrate
+      ports:
+        - {protocol: TCP, port: 6379}
+---
+# Kafka 9092 from the application namespace. Strimzi's own NetworkPolicy (burnrate-network-policy-kafka,
+# built from networkPolicyPeers) allows the same; this one keeps the rule visible next to the others and
+# keeps the application working if that list is ever edited.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-from-apps
+  namespace: data
+spec:
+  podSelector:
+    matchLabels:
+      strimzi.io/cluster: burnrate
+      strimzi.io/kind: Kafka
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: burnrate
+      ports:
+        - {protocol: TCP, port: 9092}
+---
+# CloudNativePG operator -> instance manager (8000: status, switchover) and PostgreSQL (5432).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-from-operator
+  namespace: data
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: pg
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: platform
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudnative-pg
+      ports:
+        - {protocol: TCP, port: 8000}
+        - {protocol: TCP, port: 5432}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-scrape
+  namespace: data
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - {protocol: TCP, port: 9187}   # PostgreSQL exporter of the CloudNativePG instances
+        - {protocol: TCP, port: 9404}   # Strimzi Kafka Exporter

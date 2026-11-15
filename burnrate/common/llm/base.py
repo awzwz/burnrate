@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import AsyncIterator, Protocol
+from typing import Protocol
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 PDF = "application/pdf"
 IMAGES = ("image/png", "image/jpeg", "image/webp", "image/gif")
@@ -181,7 +182,7 @@ class StatementFields(BaseModel):
 _DATE_FORMATS = ("%m/%d/%Y", "%m/%d/%y", "%B %d, %Y", "%b %d, %Y", "%B %d %Y", "%b %d %Y", "%d %B %Y", "%d %b %Y")
 
 
-def _decimal(value: str | float | int) -> Decimal:
+def _decimal(value: str | float) -> Decimal:
     """"$5,319.33", "5319.33", "(240.00)", "-240.00", "240.00 CR" as a signed number."""
     text = str(value).strip()
     negative = text.startswith("(") or "-" in text or text.upper().endswith("CR")
@@ -228,8 +229,6 @@ def _convert(kind: str, name: str, value) -> int | dt.date:
 def to_statement_fields(raw: object) -> tuple[dict, list[str]]:
     """Validate the model's answer and convert it. Returns (fields with missing values left out, names of fields
     whose value could not be used). Raises LLMBadOutput when the answer is not the expected object at all."""
-    from pydantic import ValidationError
-
     if not isinstance(raw, dict):
         raise LLMBadOutput("The model did not return a JSON object.")
     try:
@@ -245,10 +244,11 @@ def to_statement_fields(raw: object) -> tuple[dict, list[str]]:
             continue
         try:
             converted = _convert(kind, name, value)
-            StatementFields.__pydantic_validator__.validate_assignment(StatementFields.model_construct(), target, converted)
-            out[target] = converted
-        except (ValueError, ValidationError):
+            StatementFields.model_validate({target: converted})  # range check for this one field
+        except ValueError:  # includes pydantic's ValidationError
             dropped.append(target)
+            continue
+        out[target] = converted
     if not out:
         raise LLMBadOutput("The model returned no usable statement fields.")
     fields = StatementFields(**out).model_dump(mode="json", exclude_none=True)

@@ -1,0 +1,84 @@
+# kube-prometheus-stack, namespace observability, release name "kps". Shared by both profiles;
+# sizes and retention are in values-small.yaml / values-full.yaml.
+#   Prometheus  kps-prometheus.observability:9090        Grafana  kps-grafana.observability:80
+# Neither is exposed publicly: kubectl -n observability port-forward svc/kps-grafana 3000:80
+fullnameOverride: kps
+crds:
+  enabled: true
+
+# The DOKS control plane is managed and Cilium replaces kube-proxy: nothing to scrape there.
+kubeEtcd: {enabled: false}
+kubeScheduler: {enabled: false}
+kubeControllerManager: {enabled: false}
+kubeProxy: {enabled: false}
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeControllerManager: false
+    kubeProxy: false
+
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    replicas: 1
+    retention: 48h
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 128Mi}
+
+prometheusOperator:
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 256Mi}
+  prometheusConfigReloader:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+      limits: {memory: 64Mi}
+
+prometheus:
+  prometheusSpec:
+    replicas: 1
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    # pick up ServiceMonitors / PodMonitors / rules from every namespace, not only the ones of this release
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+
+prometheus-node-exporter:
+  resources:
+    requests: {cpu: 10m, memory: 24Mi}
+    limits: {memory: 64Mi}
+
+kube-state-metrics:
+  resources:
+    requests: {cpu: 10m, memory: 64Mi}
+    limits: {memory: 192Mi}
+
+grafana:
+  enabled: true
+  admin:
+    existingSecret: grafana-admin     # created by bootstrap.sh from deploy/secrets/grafana.env
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: false                    # dashboards come from ConfigMaps (deploy/platform/grafana-dashboards)
+  grafana.ini:
+    analytics:
+      check_for_updates: false
+      reporting_enabled: false
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: true

@@ -1,0 +1,38 @@
+# Non-secret settings of every Burn Rate pod (envFrom). Names are the BR_* fields of burnrate/common/config.py.
+# Secrets are NOT here: deploy/scripts/secrets.sh creates the Secret burnrate-secrets
+# (BR_JWT_SECRET, BR_INTERNAL_TOKEN, BR_ADMIN_TOKEN, BR_DATABASE_URL, BR_OPENAI_API_KEY, ...).
+# A change here reaches the pods on the next deploy/scripts/deploy.sh: the script stamps a hash of this file
+# on every pod template, so the Deployments roll.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: burnrate-config
+data:
+  # --- runtime ---
+  BR_MODE: cluster            # one service per Deployment; SERVICE picks the role
+  BR_ENV: prod                # also switches /docs off
+  BR_DATA_DIR: /data          # an emptyDir; in cluster mode nothing durable is written there
+  LOG_LEVEL: INFO
+  # public address: replaced by deploy.sh with https://burnrate.<LB-IP-with-dashes>.sslip.io (deploy/apps/env)
+  BR_PUBLIC_URL: https://burnrate.example.sslip.io
+  BR_COOKIE_SECURE: "true"
+  BR_DEFAULT_TIMEZONE: America/New_York
+
+  # --- stores (namespace data, ClusterIP only) ---
+  # BR_DATABASE_URL is in the Secret: postgresql+asyncpg://burnrate:***@pg-rw.data.svc.cluster.local:5432/{service}
+  BR_KAFKA_BOOTSTRAP: burnrate-kafka-bootstrap.data.svc.cluster.local:9092
+  BR_REDIS_URL: redis://valkey.data.svc.cluster.local:6379/0
+
+  # --- language model: OpenAI. The key is in the Secret. ---
+  BR_LLM_PROVIDER: openai
+  BR_OPENAI_MODEL: gpt-5.4-mini
+  # Spending ceilings in US dollars per UTC day. When one is reached the product keeps working on manual input.
+  BR_LLM_DAILY_BUDGET_USD: "3.0"          # the whole deployment
+  BR_LLM_USER_DAILY_BUDGET_USD: "0.15"    # one signed-in user
+  BR_LLM_GUEST_DAILY_BUDGET_USD: "0.03"   # one demo guest
+
+  # --- product switches: everything a jury member touches works without real money or real messages ---
+  BR_DEMO_ENABLED: "true"
+  BR_BILLING_PROVIDER: demo               # test card on screen; "stripe" needs BR_STRIPE_* in the Secret
+  BR_SMS_PROVIDER: inbox                  # captured and shown in the demo inbox
+  BR_EMAIL_PROVIDER: inbox

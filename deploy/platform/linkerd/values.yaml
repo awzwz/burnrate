@@ -1,0 +1,54 @@
+# Linkerd edge control plane (chart linkerd-edge/linkerd-control-plane), namespace linkerd.
+# Mutual TLS and per-request load balancing between the pods of namespace burnrate (annotation
+# linkerd.io/inject=enabled on the namespace). Not meshed: the Envoy proxies of the gateway, the web pods,
+# Jobs and CronJobs, and everything in namespace data.
+# Why "edge": open-source Linkerd publishes container images only for edge releases (lesson of the previous
+# cluster). Trust anchor and issuer come from deploy/secrets/linkerd/ (generated once with `step`, 1 year).
+controllerReplicas: 1
+enablePodAntiAffinity: false
+enablePodDisruptionBudget: false
+disableHeartBeat: true
+proxy:
+  # Kubernetes native sidecars: the proxy starts before the application and Jobs can finish.
+  nativeSidecar: true
+  resources:
+    cpu:
+      request: 10m
+    memory:
+      request: 20Mi
+      limit: 128Mi
+proxyInit:
+  resources:
+    cpu:
+      request: 10m
+    memory:
+      request: 10Mi
+      limit: 50Mi
+destinationResources:
+  cpu:
+    request: 20m
+  memory:
+    request: 64Mi
+    limit: 256Mi
+identityResources:
+  cpu:
+    request: 10m
+  memory:
+    request: 32Mi
+    limit: 128Mi
+proxyInjectorResources:
+  cpu:
+    request: 10m
+  memory:
+    request: 32Mi
+    limit: 128Mi
+heartbeatResources:
+  memory:
+    request: 16Mi
+policyController:
+  resources:
+    cpu:
+      request: 10m
+    memory:
+      request: 32Mi
+      limit: 128Mi

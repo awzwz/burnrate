@@ -1,0 +1,68 @@
+# Network policy of the application namespace: nothing comes in unless a rule below says so.
+#   - pods of this namespace talk to each other (service-to-service calls on :8000; with Linkerd some of that
+#     traffic arrives on the proxy port, so the rule does not name ports);
+#   - the gateway (Envoy proxies in envoy-gateway-system) reaches ONLY edge-api, webhooks and web;
+#   - Prometheus scrapes /metrics.
+# Outgoing traffic is not restricted (PostgreSQL, Kafka, Valkey, OpenAI, DNS).
+# The data namespace has its own policy: deploy/platform/network-policies/data.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-namespace
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-to-public-pods
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [edge-api, webhooks, web]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: envoy-gateway-system
+          podSelector:
+            matchLabels:
+              gateway.envoyproxy.io/owning-gateway-name: burnrate
+              gateway.envoyproxy.io/owning-gateway-namespace: edge
+      ports:
+        - {protocol: TCP, port: 8000}
+        - {protocol: TCP, port: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-scrape
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - {protocol: TCP, port: 8000}   # /metrics of the online services
+        - {protocol: TCP, port: 4191}   # linkerd-proxy admin (metrics)

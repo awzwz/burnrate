@@ -1,0 +1,17 @@
+# KEDA (chart kedacore/keda), namespace platform. Scales every worker on Kafka consumer lag
+# (ScaledObjects in deploy/apps/<profile>/autoscaling.yaml).
+resources:
+  operator:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 384Mi}
+  metricServer:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 384Mi}
+  webhooks:
+    requests: {cpu: 10m, memory: 32Mi}
+    limits: {memory: 192Mi}
+prometheus:
+  operator:
+    enabled: false
+  metricServer:
+    enabled: false

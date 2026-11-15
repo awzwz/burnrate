@@ -1,0 +1,21 @@
+# Profile "full" only: scrape the Linkerd proxy of every meshed pod in namespace burnrate
+# (port linkerd-admin :4191): request_total, response_latency_ms, tcp_* per pod, without linkerd-viz.
+# Left out of "small" on purpose: about 30 proxies with hundreds of series each would double what the small
+# Prometheus has to hold; the application's own br_http_* metrics give the same picture.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: linkerd-proxies
+  namespace: burnrate
+spec:
+  selector:
+    matchExpressions:
+      - key: linkerd.io/control-plane-ns
+        operator: Exists
+  podMetricsEndpoints:
+    - port: linkerd-admin
+      path: /metrics
+      interval: 30s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+          targetLabel: app

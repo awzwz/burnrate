@@ -1,0 +1,19 @@
+# TLS certificate of the public hostname. __HOST__ and __ISSUER__ are filled in by bootstrap.sh (step
+# "certificate"): burnrate.<LB-IP-with-dashes>.sslip.io, letsencrypt-prod.
+# The Secret burnrate-tls is what the :443 listener of Gateway edge/burnrate serves.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: burnrate-tls
+  namespace: edge
+spec:
+  secretName: burnrate-tls
+  dnsNames:
+    - __HOST__
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    kind: ClusterIssuer
+    name: __ISSUER__

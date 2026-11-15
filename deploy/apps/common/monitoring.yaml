@@ -1,0 +1,119 @@
+# Metrics and alerts of the application (Prometheus Operator objects; Prometheus "kps" reads every namespace).
+#
+# Online services expose GET /metrics on port http (burnrate/services/base.py):
+#   br_http_requests_total{service,method,route,status}      br_http_request_seconds_bucket{service,route,le}
+# Workers and the timer loop have no HTTP server. They are watched through Kafka consumer lag
+# (kafka_consumergroup_lag from the Strimzi Kafka Exporter, deploy/platform/kube-prometheus-stack/monitors.yaml)
+# and container restarts (kube-state-metrics).
+#
+# Health checks and scrapes are left out of every expression: probes alone are several requests a second,
+# always fast and always 200, and would hide a real problem.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: burnrate-services
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: service
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: burnrate-alerts
+spec:
+  groups:
+    - name: burnrate.http
+      rules:
+        # 5xx above 2% of requests for 5 minutes (needs at least 5 requests in the window: one failed request
+        # out of two is not a 50% error rate worth waking up for)
+        - alert: BurnRateHigh5xxRate
+          expr: |
+            (
+              sum by (service) (rate(br_http_requests_total{status=~"5..", route!~"/(healthz|readyz|metrics)"}[5m]))
+                /
+              sum by (service) (rate(br_http_requests_total{route!~"/(healthz|readyz|metrics)"}[5m]))
+            ) > 0.02
+            and
+            sum by (service) (increase(br_http_requests_total{route!~"/(healthz|readyz|metrics)"}[5m])) >= 5
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.service }}: {{ $value | humanizePercentage }} of requests fail with 5xx"
+            description: "More than 2% of the requests to {{ $labels.service }} have ended in a 5xx for 5 minutes. Logs: kubectl -n burnrate logs deploy/{{ $labels.service }} --since=15m"
+
+        # p95 above 1 s for 10 minutes. Left out on purpose: llm-gateway and every rehearsal route. They wait
+        # for a language model and stream the answer, so seconds are normal there.
+        - alert: BurnRateSlowRequests
+          expr: |
+            histogram_quantile(0.95,
+              sum by (service, le) (rate(br_http_request_seconds_bucket{service!="llm-gateway", route!~"/(healthz|readyz|metrics)|.*rehearsal.*"}[5m]))
+            ) > 1
+            and
+            sum by (service) (increase(br_http_request_seconds_count{service!="llm-gateway", route!~"/(healthz|readyz|metrics)|.*rehearsal.*"}[5m])) >= 5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service }}: p95 latency is {{ $value | humanizeDuration }}"
+            description: "The 95th percentile of request time of {{ $labels.service }} has been above 1 s for 10 minutes (target in the architecture: 300 ms)."
+
+    - name: burnrate.workers
+      rules:
+        # consumer group = worker name
+        - alert: BurnRateConsumerLagGrowing
+          expr: |
+            sum by (consumergroup) (kafka_consumergroup_lag) > 10
+            and
+            sum by (consumergroup) (deriv(kafka_consumergroup_lag[10m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "worker {{ $labels.consumergroup }}: Kafka lag is {{ $value }} messages and growing"
+            description: "The consumer group {{ $labels.consumergroup }} has been falling behind for 10 minutes. Is the worker running (kubectl -n burnrate get pods -l app.kubernetes.io/name={{ $labels.consumergroup }}), stuck on one message (its log), or at its KEDA maximum?"
+
+    - name: burnrate.pods
+      rules:
+        - alert: BurnRatePodRestarted
+          expr: increase(kube_pod_container_status_restarts_total{namespace=~"burnrate|data|edge|envoy-gateway-system"}[15m]) >= 1
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) restarted"
+            description: "Why: kubectl -n {{ $labels.namespace }} describe pod {{ $labels.pod }}; kubectl -n {{ $labels.namespace }} logs {{ $labels.pod }} -c {{ $labels.container }} --previous"
+        - alert: BurnRatePodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total{namespace=~"burnrate|data|edge|envoy-gateway-system"}[30m]) >= 3
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) keeps restarting"
+            description: "Three or more restarts in 30 minutes. A worker that logs \"has no subscriptions\" has no handler in the code yet."
+
+    - name: burnrate.certificates
+      rules:
+        # Let's Encrypt certificates live 90 days and cert-manager renews 30 days before the end, so under
+        # 14 days means the renewal has been failing for more than two weeks.
+        - alert: BurnRateCertificateExpiresSoon
+          expr: certmanager_certificate_expiration_timestamp_seconds - time() < 14 * 24 * 3600
+          for: 1h
+          labels:
+            severity: critical
+          annotations:
+            summary: "certificate {{ $labels.namespace }}/{{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+            description: "kubectl -n {{ $labels.namespace }} describe certificate {{ $labels.name }}; kubectl -n {{ $labels.namespace }} get challenges,orders"
+        - alert: BurnRateCertificateNotReady
+          expr: certmanager_certificate_ready_status{condition="False"} == 1
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: "certificate {{ $labels.namespace }}/{{ $labels.name }} is not ready"
+            description: "cert-manager has not been able to issue or renew it for 30 minutes."

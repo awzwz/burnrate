@@ -1,0 +1,70 @@
+# Profile "full" only. HashiCorp Vault (chart hashicorp/vault), namespace platform:
+# three pods with integrated Raft storage on three different nodes. vault.platform:8200.
+# (The previous cluster ran Vault in dev mode and lost everything on a restart; this one keeps its data.)
+#
+# A fresh Vault is SEALED and its pods are not Ready until somebody initialises and unseals it; bootstrap.sh
+# prints the commands (or runs them with VAULT_AUTO_INIT=1 and stores the keys in deploy/secrets/vault-init.json).
+# Every pod has to be unsealed again after each restart: there is no auto-unseal here, because that needs a
+# key service outside the cluster.
+#
+# Nothing in the application reads Vault yet (burnrate/common/config.py has no Vault setting): the application
+# secrets are the Kubernetes Secret burnrate-secrets.
+global:
+  enabled: true
+injector:
+  enabled: false
+csi:
+  enabled: false
+ui:
+  enabled: true
+server:
+  standalone:
+    enabled: false
+  dev:
+    enabled: false
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+        listener "tcp" {
+          tls_disable = 1
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+        }
+        storage "raft" {
+          path = "/vault/data"
+          retry_join {
+            leader_api_addr = "http://vault-0.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-1.vault-internal:8200"
+          }
+          retry_join {
+            leader_api_addr = "http://vault-2.vault-internal:8200"
+          }
+        }
+        service_registration "kubernetes" {}
+    disruptionBudget:
+      enabled: true
+  dataStorage:
+    enabled: true
+    size: 5Gi
+    storageClass: do-block-storage
+  auditStorage:
+    enabled: false
+  resources:
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 512Mi}
+  affinity: |
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault
+              app.kubernetes.io/instance: vault
+              component: server
+          topologyKey: kubernetes.io/hostname

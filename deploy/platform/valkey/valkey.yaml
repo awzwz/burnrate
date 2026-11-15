@@ -1,0 +1,102 @@
+# Valkey 8 (official image), namespace data: valkey.data:6379, one pod, no password (ClusterIP only, and the
+# NetworkPolicy lets in the application namespace alone).
+# Used for rate-limit counters shared by all replicas (burnrate/common/ratelimit.py). The limiter fails open:
+# if this pod is away, requests are served without a limit rather than refused.
+# volatile-lru: under memory pressure only keys with a TTL are dropped (every rate-limit key has one).
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  namespace: data
+  labels: {app.kubernetes.io/name: valkey}
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: valkey}
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey-headless
+  namespace: data
+  labels: {app.kubernetes.io/name: valkey}
+spec:
+  clusterIP: None
+  selector: {app.kubernetes.io/name: valkey}
+  ports:
+    - name: valkey
+      port: 6379
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey
+  namespace: data
+  labels: {app.kubernetes.io/name: valkey}
+spec:
+  serviceName: valkey-headless
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: valkey}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: valkey}
+    spec:
+      enableServiceLinks: false
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999          # user "valkey" of the image
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: valkey
+          image: valkey/valkey:8.1.11-alpine
+          args:
+            - valkey-server
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+            - --maxmemory
+            - 96mb
+            - --maxmemory-policy
+            - volatile-lru
+            - --save
+            - ""
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            exec: {command: [valkey-cli, ping]}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            exec: {command: [valkey-cli, ping]}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 192Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: do-block-storage
+        resources:
+          requests:
+            storage: 1Gi

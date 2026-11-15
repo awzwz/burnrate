@@ -1,0 +1,36 @@
+# Profile "full" only. Argo CD (chart argo/argo-cd), namespace argocd. No Dex, no notifications,
+# ApplicationSet scaled to 0. Two replicas of the stateless parts.
+# Not exposed publicly:  kubectl -n argocd port-forward svc/argocd-server 8080:80   ->  http://localhost:8080
+# Admin password: secret argocd/argocd-initial-admin-secret (bootstrap.sh copies it to deploy/secrets/argocd.env).
+dex:
+  enabled: false
+notifications:
+  enabled: false
+applicationSet:
+  replicas: 0
+configs:
+  params:
+    server.insecure: true     # TLS is not terminated here; access is by port-forward
+  cm:
+    timeout.reconciliation: 180s
+    exec.enabled: false
+    admin.enabled: true
+redis:
+  resources:
+    requests: {cpu: 20m, memory: 64Mi}
+    limits: {memory: 192Mi}
+controller:
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 768Mi}
+repoServer:
+  replicas: 2
+  resources:
+    requests: {cpu: 50m, memory: 192Mi}
+    limits: {memory: 512Mi}
+server:
+  replicas: 2
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 384Mi}

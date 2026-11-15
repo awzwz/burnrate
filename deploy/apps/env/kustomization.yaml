@@ -1,0 +1,40 @@
+# What belongs to ONE deployment of the application: public hostname, image tags, configuration hash.
+# REWRITTEN by deploy/scripts/deploy.sh on every run; the values below are placeholders that keep
+# `kubectl kustomize deploy/apps` working on a fresh checkout. Included by ../small and ../full.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+images:
+  - name: registry.digitalocean.com/burnrate/api
+    newName: registry.digitalocean.com/burnrate/api
+    newTag: latest
+  - name: registry.digitalocean.com/burnrate/web
+    newName: registry.digitalocean.com/burnrate/web
+    newTag: latest
+patches:
+  - target:
+      kind: HTTPRoute
+      name: burnrate
+    patch: |-
+      - op: replace
+        path: /spec/hostnames/0
+        value: burnrate.example.sslip.io
+  - target:
+      kind: ConfigMap
+      name: burnrate-config
+    patch: |-
+      - op: replace
+        path: /data/BR_PUBLIC_URL
+        value: https://burnrate.example.sslip.io
+  # a new hash rolls every Deployment, so a changed ConfigMap reaches the pods
+  - target:
+      kind: Deployment
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: all
+      spec:
+        template:
+          metadata:
+            annotations:
+              burnrate.io/config-hash: none

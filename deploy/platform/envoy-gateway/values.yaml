@@ -1,0 +1,23 @@
+# Envoy Gateway controller (chart oci://docker.io/envoyproxy/gateway-helm), namespace envoy-gateway-system.
+# It watches Gateway API objects and runs the Envoy proxies described in gateway.yaml / proxy-<profile>.yaml.
+# ingress-nginx is not used: upstream retired it in March 2026.
+deployment:
+  replicas: 1
+  envoyGateway:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
+# Envoy Gateway's own CRDs are installed by the chart. The Gateway API CRDs are in the chart's crds/ directory
+# too: Helm creates the ones that are missing and never touches the ones DOKS already installed with Cilium.
+crds:
+  enabled: true
+  gatewayAPI:
+    # The chart can add a ValidatingAdmissionPolicy that rejects Gateway API CRD updates older than v1.5.
+    # DOKS manages those CRDs itself; a policy that could block DigitalOcean's own reconciliation is not
+    # something this project should install.
+    safeUpgradePolicy:
+      enabled: false

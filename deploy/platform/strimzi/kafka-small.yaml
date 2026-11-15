@@ -1,0 +1,82 @@
+# Kafka cluster "burnrate" (Strimzi, API kafka.strimzi.io/v1, KRaft), profile "small":
+# ONE node that is controller and broker, replication factor 1. Losing the node or its volume loses the
+# events in flight. They are not the source of truth: every event is first a row in the outbox table of the
+# service that wrote it (PostgreSQL), and consumers are idempotent.
+# Bootstrap: burnrate-kafka-bootstrap.data:9092 (plain, in-cluster only).
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual
+  namespace: data
+  labels:
+    strimzi.io/cluster: burnrate
+spec:
+  replicas: 1
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 10Gi
+        class: do-block-storage
+        deleteClaim: false
+        kraftMetadata: shared
+  jvmOptions:
+    "-Xms": 768m
+    "-Xmx": 768m
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1536Mi
+    limits:
+      memory: 1536Mi
+---
+apiVersion: kafka.strimzi.io/v1
+kind: Kafka
+metadata:
+  name: burnrate
+  namespace: data
+spec:
+  kafka:
+    version: 4.3.1
+    listeners:
+      - name: plain
+        port: 9092
+        type: internal
+        tls: false
+        # Strimzi writes the NetworkPolicy of the brokers itself; without this list port 9092 would be open
+        # to the whole cluster. Clients: the application, KEDA (reads consumer lag), pods of this namespace.
+        networkPolicyPeers:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: burnrate
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: platform
+          - podSelector: {}
+    config:
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1
+      min.insync.replicas: 1
+      num.partitions: 3
+      # Topics appear on first use (3 partitions). The outbox relay of a service stops at the first event it
+      # cannot publish, so a topic that does not exist must never be a reason.
+      auto.create.topics.enable: true
+      log.retention.hours: 168
+      log.segment.bytes: 104857600
+  # No entityOperator in this profile: there are no KafkaTopic objects to reconcile (192 Mi saved).
+  # Consumer lag for Grafana and the alert (KEDA reads lag from Kafka directly).
+  kafkaExporter:
+    topicRegex: ".*"
+    groupRegex: ".*"
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 128Mi

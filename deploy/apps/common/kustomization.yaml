@@ -1,0 +1,8 @@
+# Hand-written part of the application, shared by both profiles. Included by ../small and ../full.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+  - routes.yaml
+  - networkpolicy.yaml
+  - monitoring.yaml

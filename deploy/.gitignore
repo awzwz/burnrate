@@ -1,0 +1,4 @@
+# generated passwords, tokens, certificates: never commit
+secrets/
+# what deploy.sh remembers between runs (last host, deploy history)
+.state/

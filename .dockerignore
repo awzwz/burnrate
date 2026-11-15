@@ -1,0 +1,39 @@
+# One build context (the repository root) for both images:
+#   docker build -t burnrate-api .                      (Dockerfile)
+#   docker build -t burnrate-web -f web/Dockerfile .    (web/Dockerfile)
+
+# secrets and local state: never in an image
+.env
+.env.*
+!.env.example
+.data
+deploy/secrets
+**/*.pem
+**/*.key
+
+# version control, CI, tooling
+.git
+.github
+.venv
+.pytest_cache
+.ruff_cache
+*.egg-info
+**/__pycache__
+**/*.pyc
+**/.DS_Store
+
+# not needed at run time
+deploy
+docs
+tests
+test-results
+playwright-report
+docker-compose.yml
+Makefile
+
+# front end: sources go in, host-built artefacts and host node_modules stay out
+**/node_modules
+web/dist
+web/.vite
+web/.screens
+web/*.local

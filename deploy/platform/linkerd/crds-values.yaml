@@ -1,0 +1,3 @@
+# linkerd-crds (chart linkerd-edge/linkerd-crds). The Gateway API CRDs already exist (DOKS installs them
+# with Cilium, and the Envoy Gateway chart adds the ones that are missing), so Linkerd must not install its own.
+installGatewayAPI: false

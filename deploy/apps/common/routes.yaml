@@ -1,0 +1,120 @@
+# Public routing: Gateway "burnrate" (namespace edge, Envoy Gateway) -> the three public Services.
+#
+#   /api/...      edge-api:8000     the only public API
+#   /hooks/...    webhooks:8000     Stripe and SMS webhooks
+#   everything    web:8080          the React app (nginx)
+#   /internal, /metrics, /readyz, /admin/api   answered 404 by the gateway itself, never forwarded
+#
+# The hostname is replaced by deploy.sh (deploy/apps/env). HTTP -> HTTPS is a separate route on the Gateway's
+# port 80 listener (deploy/platform/envoy-gateway/gateway.yaml).
+#
+# Three independent locks keep /internal and /metrics private:
+#   1. the first rule below (answer 404 at the gateway);
+#   2. NetworkPolicy gateway-to-public-pods: the gateway reaches ONLY edge-api, webhooks and web, so a wrong
+#      route to e.g. engine fails to connect;
+#   3. internal routers need the x-internal-token header, and the gateway removes that header from every
+#      incoming request.
+# How to test: deploy/scripts/smoke.sh, or by hand
+#   curl -s -o /dev/null -w '%{http_code}\n' https://$HOST/internal/engine/rules                      # 404
+#   curl -s -o /dev/null -w '%{http_code}\n' https://$HOST/metrics                                    # 404
+#   curl -s -o /dev/null -w '%{http_code}\n' --path-as-is https://$HOST/api/../internal/engine/rules  # 404
+#
+# Every rule sets timeouts.request explicitly; nothing relies on a proxy default.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: not-found
+spec:
+  directResponse:
+    statusCode: 404
+    contentType: application/json
+    body:
+      type: Inline
+      inline: '{"error":{"code":"not_found","message":"No such endpoint."}}'
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: burnrate
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: edge
+      name: burnrate
+      sectionName: https
+  hostnames:
+    - burnrate.example.sslip.io
+  rules:
+    # 1. never public
+    - matches:
+        - path: {type: PathPrefix, value: /internal}
+        - path: {type: PathPrefix, value: /metrics}
+        - path: {type: PathPrefix, value: /readyz}
+        - path: {type: PathPrefix, value: /admin/api}
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: not-found
+
+    # 2. the rehearsal chat: POST /api/rehearsal/{id}/turn answers with server-sent events until the model has
+    #    finished speaking. Envoy streams responses without buffering; the request only needs time.
+    - matches:
+        - path: {type: PathPrefix, value: /api/rehearsal}
+      timeouts:
+        request: 600s
+      filters: &public-filters
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            remove: [x-internal-token]
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - name: Strict-Transport-Security
+                value: max-age=15552000
+      backendRefs:
+        - name: edge-api
+          port: 8000
+
+    # 3. statement upload: POST /api/statements, multipart, up to 10 MB (the application enforces the size).
+    #    Envoy has no default body-size cap (nginx would stop at 1 MB); a phone on a slow network needs time.
+    - matches:
+        - path: {type: PathPrefix, value: /api/statements}
+      timeouts:
+        request: 180s
+      filters: *public-filters
+      backendRefs:
+        - name: edge-api
+          port: 8000
+
+    # 4. the rest of the public API
+    - matches:
+        - path: {type: PathPrefix, value: /api}
+      timeouts:
+        request: 60s
+      filters: *public-filters
+      backendRefs:
+        - name: edge-api
+          port: 8000
+
+    # 5. webhooks: verify the signature, write to the outbox, answer at once
+    - matches:
+        - path: {type: PathPrefix, value: /hooks}
+      timeouts:
+        request: 30s
+      filters: *public-filters
+      backendRefs:
+        - name: webhooks
+          port: 8000
+
+    # 6. the web app
+    - matches:
+        - path: {type: PathPrefix, value: /}
+      timeouts:
+        request: 30s
+      filters: *public-filters
+      backendRefs:
+        - name: web
+          port: 8080

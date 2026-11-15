@@ -1,0 +1,41 @@
+# cert-manager (chart jetstack/cert-manager), namespace cert-manager.
+crds:
+  enabled: true
+  keep: true
+replicaCount: 1
+# Gateway API support is off by default. It is needed for the HTTP-01 solver that answers the challenge
+# through a temporary HTTPRoute on the Gateway (clusterissuers.yaml).
+# cert-manager looks for the Gateway API CRDs only when it starts, so bootstrap.sh installs Envoy Gateway first.
+config:
+  apiVersion: controller.config.cert-manager.io/v1alpha1
+  kind: ControllerConfiguration
+  gatewayAPI:
+    enabled: true
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+cainjector:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+startupapicheck:
+  enabled: true
+prometheus:
+  enabled: true
+  servicemonitor:
+    # The Prometheus Operator CRDs do not exist yet when cert-manager is installed; the scrape config is the
+    # PodMonitor in deploy/platform/kube-prometheus-stack/monitors.yaml.
+    enabled: false

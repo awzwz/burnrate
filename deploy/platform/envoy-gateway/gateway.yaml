@@ -1,0 +1,73 @@
+# The public entry of the cluster (Gateway API, implemented by Envoy Gateway).
+#
+#   Internet -> DigitalOcean Load Balancer "burnrate-lb" (L4) -> Envoy proxies -> HTTPRoutes
+#
+#   GatewayClass "envoy"      which controller, and with which proxy settings (EnvoyProxy "burnrate")
+#   Gateway "burnrate"        listeners :80 (redirect + ACME HTTP-01) and :443 (TLS, certificate burnrate-tls)
+#   HTTPRoute http-to-https   everything on :80 -> 301 https
+# The application's own HTTPRoute lives with the application: deploy/apps/common/routes.yaml.
+# The EnvoyProxy object (replicas, resources, load balancer) is per profile: proxy-small.yaml / proxy-full.yaml.
+#
+# If DOKS runs Cilium's own Gateway controller there is a second GatewayClass named "cilium". The two do not
+# collide: each controller only touches Gateways of its own class.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: burnrate
+    namespace: envoy-gateway-system
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: burnrate
+  namespace: edge
+spec:
+  gatewayClassName: envoy
+  listeners:
+    # Plain HTTP: only the redirect below and cert-manager's temporary HTTP-01 challenge routes (both live in
+    # this namespace) may attach.
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+    # HTTPS for every hostname of the load balancer IP. The certificate is the Certificate "burnrate-tls"
+    # (deploy/platform/cert-manager/certificate.tmpl.yaml); until it is issued this listener is not
+    # programmed while :80 already works, which is exactly what the HTTP-01 challenge needs.
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: burnrate-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              burnrate.io/gateway-routes: "true"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https
+  namespace: edge
+spec:
+  parentRefs:
+    - name: burnrate
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

@@ -1,0 +1,31 @@
+# Profile "full" only. Tempo single binary (chart grafana/tempo), namespace observability.
+# OTLP gRPC tempo.observability:4317, OTLP HTTP :4318, query API :3200. 7 days on a 10Gi volume.
+# The metrics generator writes the service graph and span metrics to Prometheus (remote-write receiver is
+# enabled in kube-prometheus-stack/values-full.yaml).
+# The application has no OpenTelemetry SDK yet (pyproject.toml): until it gets one, Tempo stays empty.
+fullnameOverride: tempo
+tempo:
+  reportingEnabled: false
+  memBallastSizeMbs: 64
+  retention: 168h
+  resources:
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 768Mi}
+  metricsGenerator:
+    enabled: true
+    remoteWriteUrl: http://kps-prometheus.observability:9090/api/v1/write
+  overrides:
+    defaults:
+      metrics_generator:
+        processors: [service-graphs, span-metrics]
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+        http:
+          endpoint: "0.0.0.0:4318"
+persistence:
+  enabled: true
+  storageClassName: do-block-storage
+  size: 10Gi

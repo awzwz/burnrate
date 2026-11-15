@@ -1,0 +1,6 @@
+# Manual worker -> topics table for the KEDA triggers. Normally EMPTY: deploy/scripts/gen-apps.sh reads the topics
+# of each worker from the code (every `@subscribe("topic", worker="name", ...)` under burnrate/).
+# Add a line only when the code cannot be read that way (the topic or the worker is not a string literal).
+# A line here replaces what was found in the code for that worker.
+#
+#   worker-name: topic.one, topic.two

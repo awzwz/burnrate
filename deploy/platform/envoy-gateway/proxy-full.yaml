@@ -1,0 +1,48 @@
+# Envoy proxies of the public Gateway, profile "full": 3 replicas behind the DigitalOcean Load Balancer.
+# Referenced by GatewayClass "envoy" (gateway.yaml). The controller creates the Deployment and the
+# LoadBalancer Service in envoy-gateway-system; their pods carry the labels
+#   gateway.envoyproxy.io/owning-gateway-name=burnrate, gateway.envoyproxy.io/owning-gateway-namespace=edge
+# which the application's NetworkPolicy uses to let the gateway in.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: burnrate
+  namespace: envoy-gateway-system
+spec:
+  logging:
+    level:
+      default: warn
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: 3
+        container:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+        pod:
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  gateway.envoyproxy.io/owning-gateway-name: burnrate
+                  gateway.envoyproxy.io/owning-gateway-namespace: edge
+      envoyPDB:
+        minAvailable: 1
+      envoyService:
+        type: LoadBalancer
+        # "Cluster", as on the previous cluster: every node accepts load balancer traffic, and cert-manager's
+        # self-check (a request to the public hostname from inside the cluster) reaches the proxies.
+        # The price: the application sees a node address, not the client's. To pass the client address through,
+        # enable PROXY protocol on BOTH sides (annotation do-loadbalancer-enable-proxy-protocol here and
+        # ClientTrafficPolicy.spec.enableProxyProtocol); not done and not tested.
+        externalTrafficPolicy: Cluster
+        annotations:
+          service.beta.kubernetes.io/do-loadbalancer-name: burnrate-lb
+          service.beta.kubernetes.io/do-loadbalancer-size-unit: "1"
